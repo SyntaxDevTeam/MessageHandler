@@ -1,0 +1,13 @@
+prefix:
+  value: "<gray>[Serwer]</gray> "
+general:
+  welcome:
+    format: MINI_MESSAGE
+    value: "<green>Witaj <player>!</green>"
+  notify:
+    format: LEGACY_SECTION
+    value: "§eWitaj §l<player>"
+  info:
+    format: LEGACY_AMPERSAND
+    value: "&bInformacja dla <player>"
+  plain: "Wiadomość tekstowa"
