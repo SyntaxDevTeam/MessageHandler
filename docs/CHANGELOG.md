@@ -7,3 +7,7 @@
 - Przepisano bibliotekę na uproszczony handler wiadomości oparty o Caffeine, MiniMessage i SnakeYAML.
 - Dodano interfejsy `ResourceProvider` oraz `PluginMetaProvider` wraz z loggerem konsolowym.
 - Zaktualizowano dokumentację i testy jednostkowe do nowego API.
+- Usunięto plugin foojay-resolver z konfiguracji Gradle, aby przywrócić możliwość budowania projektu.
+
+## 2025-10-16
+- Skonfigurowano kompilację przy użyciu lokalnego JDK 21 z docelową zgodnością Java 17, aby przywrócić budowanie projektu po usunięciu pluginu foojay.
