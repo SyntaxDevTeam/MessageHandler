@@ -1,20 +1,19 @@
 # MessageHandler
 
 A lightweight Kotlin library that simplifies working with YAML-based localisation files in Minecraft plugins. It focuses on
-non-blocking reloads, caching, and Adventure `Component` formatting utilities so that retrieving messages inside a plugin is as
-simple as `messageHandler.getMessage("category", "key", mapOf("player" to playerComponent))`.
+predictable synchronous loading, Caffeine powered caching, and Adventure `Component` formatting utilities so that retrieving
+messages inside a plugin is as simple as `messageHandler.getMessage("category", "key", mapOf("player" to "Alex"))`.
 
 ## Features
 
-- **Asynchronous loading with caching** – language files are loaded on a dedicated executor and stored in a Caffeine cache so a
-  reload never blocks the main server thread.
+- **Synchronous reloads backed by caching** – language files are read on demand and cached with Caffeine for fast access.
 - **Multiple formats out of the box** – MiniMessage, Minecraft legacy section (`§`) and ampersand (`&`) formats as well as plain
   text are handled transparently.
-- **MiniMessage placeholder support** – map based placeholders are converted into `TagResolver`s and can be mixed with custom
-  resolvers.
+- **MiniMessage placeholder support** – simple map based placeholders are converted into `TagResolver`s and work alongside
+  custom resolvers.
 - **Rich conversion helpers** – retrieve translations as Adventure components, MiniMessage strings, legacy strings, or plain text.
-- **Configurable prefixes and fallbacks** – pick any path for a prefix entry and optionally fall back to another locale.
-- **Small surface area** – instantiate once and reuse; reloads return a `CompletableFuture<Unit>`.
+- **Minimal dependencies** – provide a tiny `ResourceProvider` and `PluginMetaProvider` wrapper around your platform and you are
+  ready to go.
 
 ## Getting started
 
@@ -36,62 +35,57 @@ Until the library is published, include the `lib` module as a composite build or
 
 ```kotlin
 val handler = MessageHandler(
-    MessageHandlerConfig(
-        baseDirectory = plugin.dataFolder.toPath().resolve("lang"),
-        defaultLocale = Locale("pl"),
-        fallbackLocale = Locale.ENGLISH
-    )
+    object : ResourceProvider {
+        override val dataFolder = plugin.dataFolder
+
+        override fun getConfigValue(path: String, default: String): String =
+            plugin.config.getString(path, default)
+
+        override fun saveResource(path: String, replace: Boolean) =
+            plugin.saveResource(path, replace)
+
+        override fun getResourceStream(path: String) =
+            plugin.getResource(path)
+    },
+    object : PluginMetaProvider {
+        override val name: String = plugin.name
+    }
 )
 ```
 
-Call `handler.preload()` once during start-up (optionally await the returned future) and reuse the handler whenever you need to
-send messages.
+The handler automatically copies the language file from your JAR into the plugin directory and keeps responses cached for ten
+minutes. Call `handler.reloadMessages()` to invalidate caches after editing the YAML file.
 
 ### YAML structure
 
-Each entry can either be a raw string or an object that explicitly sets the input format:
+Each entry can be a raw string or a list of strings. MiniMessage, legacy ampersand, and legacy section formats are recognised
+automatically:
 
 ```yaml
-prefix:
-  value: "<gray>[Serwer]</gray> "
+prefix: "<gray>[Serwer]</gray>"
 general:
-  welcome:
-    format: MINI_MESSAGE
-    value: "<green>Witaj <player>!</green>"
-  notify:
-    format: LEGACY_SECTION
-    value: "§eWitaj §l<player>"
-  info:
-    format: LEGACY_AMPERSAND
-    value: "&bInformacja dla <player>"
+  welcome: "<green>Witaj <player>!</green>"
+log:
+  notice: "&aInformacja §b<player>"
+smart:
+  multi:
+    - "&ePierwsza linia"
+    - "§fDruga linia"
 ```
 
 ### Usage examples
 
 ```kotlin
-val placeholders = mapOf("player" to player.displayName())
+val placeholders = mapOf("player" to player.name)
 
 // Adventure component
 player.sendMessage(handler.getMessage("general", "welcome", placeholders))
 
 // Legacy string for other APIs
-audience.sendMessage(handler.getLegacySection("general", "notify", placeholders))
+audience.sendMessage(handler.getLogMessage("log", "notice", placeholders))
 
-// Plain text
-logger.info(handler.getPlain("general", "info", placeholders))
-
-// Prefix only
-player.sendMessage(handler.prefix().append(Component.text("Hello!")))
-```
-
-### Reloading
-
-To reload the Polish messages asynchronously:
-
-```kotlin
-handler.reload(Locale("pl")).thenRun {
-    plugin.logger.info("Messages refreshed!")
-}
+// Plain text without prefix
+plugin.logger.info(handler.getCleanMessage("general", "welcome", placeholders))
 ```
 
 ## Running the tests

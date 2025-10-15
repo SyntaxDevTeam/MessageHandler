@@ -17,9 +17,9 @@ dependencies {
 
     implementation(libs.adventure.minimessage)
     implementation(libs.adventure.serializer.legacy)
+    implementation(libs.adventure.serializer.ansi)
     implementation(libs.adventure.serializer.plain)
     implementation(libs.caffeine)
-    implementation(libs.coroutines)
     implementation(libs.snakeyaml)
 
     testImplementation(kotlin("test"))
