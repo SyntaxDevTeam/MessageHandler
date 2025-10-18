@@ -1,9 +1,0 @@
-prefix:
-  value: "<gray>[Server]</gray> "
-general:
-  welcome:
-    format: MINI_MESSAGE
-    value: "<green>Hello <player>!</green>"
-  fallback:
-    format: MINI_MESSAGE
-    value: "<yellow>Fallback <player>"
