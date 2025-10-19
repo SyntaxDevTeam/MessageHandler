@@ -270,6 +270,14 @@ class MessageHandler(
         return LegacyComponentSerializer.legacyAmpersand().deserialize(message)
     }
 
+    @Deprecated(
+        message = "Use formatLegacyText instead",
+        replaceWith = ReplaceWith("formatLegacyText(message)")
+    )
+    fun formatLegacyTextBukkit(message: String): String {
+        return ChatColor.translateAlternateColorCodes('&', message)
+    }
+
     fun formatHexAndLegacyText(message: String): Component {
         val hexFormatted = message.replace("&#([a-fA-F0-9]{6})".toRegex()) {
             val hex = it.groupValues[1]

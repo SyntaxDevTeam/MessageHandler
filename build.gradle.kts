@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "pl.syntaxdevteam"
-version = "1.0.0-SNAPSHOT"
+version = "1.0.1-SNAPSHOT"
 description = "Standalone MessageHandler library extracted from SyntaxCore."
 
 repositories {
