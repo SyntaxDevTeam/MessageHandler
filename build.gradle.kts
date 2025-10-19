@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "pl.syntaxdevteam"
-version = "1.0.1-SNAPSHOT"
+version = "1.0.2-SNAPSHOT"
 description = "Standalone MessageHandler library extracted from SyntaxCore."
 
 repositories {
@@ -22,11 +22,11 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.10-R0.1-SNAPSHOT")
-    implementation("com.github.ben-manes.caffeine:caffeine:3.2.2")
-    api("net.kyori:adventure-text-serializer-legacy:4.24.0")
-    api("net.kyori:adventure-text-minimessage:4.24.0")
-    api("net.kyori:adventure-text-serializer-plain:4.24.0")
-    api("net.kyori:adventure-text-serializer-ansi:4.24.0")
+    compileOnly("com.github.ben-manes.caffeine:caffeine:3.2.2")
+    api("net.kyori:adventure-text-serializer-legacy:4.25.0")
+    api("net.kyori:adventure-text-minimessage:4.25.0")
+    api("net.kyori:adventure-text-serializer-plain:4.25.0")
+    api("net.kyori:adventure-text-serializer-ansi:4.25.0")
 }
 
 val targetJavaVersion = 21
