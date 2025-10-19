@@ -11,7 +11,8 @@ repositories {
 }
 
 dependencies {
-    implementation("pl.syntaxdevteam:messageHandler:1.0.1-SNAPSHOT")
+    implementation("pl.syntaxdevteam:messageHandler:1.0.2-SNAPSHOT")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.2")
 }
 ```
 W klasię głownej dodaj:
