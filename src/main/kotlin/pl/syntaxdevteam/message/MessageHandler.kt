@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION")
-
 package pl.syntaxdevteam.message
 
 import com.github.benmanes.caffeine.cache.Cache
@@ -11,7 +9,6 @@ import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver
 import net.kyori.adventure.text.serializer.ansi.ANSIComponentSerializer
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
-import org.bukkit.ChatColor
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
@@ -159,7 +156,11 @@ class MessageHandler(
         }
     }
 
-    fun getMessage(category: String, key: String, placeholders: Map<String, String> = emptyMap()): Component {
+    fun stringMessageToComponent(
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): Component {
         val cacheKey = composeKey(category, key, placeholders)
         val resolver = createResolver(placeholders)
         return componentCache.get(cacheKey) {
@@ -170,7 +171,25 @@ class MessageHandler(
         }
     }
 
-    fun getSimpleMessage(category: String, key: String, placeholders: Map<String, String> = emptyMap()): String {
+    fun stringMessageToComponentNoPrefix(
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): Component {
+        val cacheKey = composeKey(category, key, placeholders)
+        val resolver = createResolver(placeholders)
+        return componentCache.get("log.$cacheKey") {
+            val raw = yamlConfig.getString("$category.$key")
+                ?: errorLogAndDefault(category, key)
+            formatMixedTextToMiniMessage(raw, resolver)
+        }
+    }
+
+    fun stringMessageToString(
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): String {
         val cacheKey = composeKey(category, key, placeholders)
         val resolver = createResolver(placeholders)
         return simpleCache.get(cacheKey) {
@@ -182,6 +201,79 @@ class MessageHandler(
         }
     }
 
+    fun stringMessageToStringNoPrefix(
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): String {
+        val cacheKey = composeKey(category, key, placeholders)
+        val resolver = createResolver(placeholders)
+        return cleanCache.get(cacheKey) {
+            val raw = yamlConfig.getString("$category.$key")
+                ?: errorLogAndDefault(category, key)
+            val parsed = mM.deserialize(raw, resolver)
+            mM.serialize(parsed)
+        }
+    }
+
+    fun getMessageStringList(category: String, key: String): List<String> {
+        return yamlConfig.getStringList("$category.$key")
+    }
+
+    /**
+     * @deprecated Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach.
+     *  Użyj zamiast niej: {@link #stringMessageToComponent}
+     */
+    @Deprecated(
+        "Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach. Użyj: stringMessageToComponent",
+        replaceWith = ReplaceWith("stringMessageToComponent(category, key, placeholders)"),
+        level = DeprecationLevel.WARNING
+    )
+    fun getMessage(category: String, key: String, placeholders: Map<String, String> = emptyMap()): Component {
+        val cacheKey = composeKey(category, key, placeholders)
+        val resolver = createResolver(placeholders)
+        return componentCache.get(cacheKey) {
+            val raw = yamlConfig.getString("$category.$key")
+                ?: errorLogAndDefault(category, key)
+            val full = "$prefix $raw"
+            mM.deserialize(full, resolver)
+        }
+    }
+
+    /**
+     * @deprecated Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach.
+     *  Użyj zamiast niej: {@link #stringMessageToString}
+     */
+    @Deprecated(
+        "Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach. Użyj: stringMessageToString",
+        replaceWith = ReplaceWith("stringMessageToString(category, key, placeholders)"),
+        level = DeprecationLevel.WARNING
+    )
+    fun getSimpleMessage(
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): String {
+        val cacheKey = composeKey(category, key, placeholders)
+        val resolver = createResolver(placeholders)
+        return simpleCache.get(cacheKey) {
+            val raw = yamlConfig.getString("$category.$key")
+                ?: errorLogAndDefault(category, key)
+            val parsed = mM.deserialize(raw, resolver)
+            val serialized = mM.serialize(parsed)
+            "$prefix $serialized"
+        }
+    }
+
+    /**
+     * @deprecated Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach.
+     *  Użyj zamiast niej: {@link #stringMessageToStringNoPrefix}
+     */
+    @Deprecated(
+        "Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach. Użyj: stringMessageToStringNoPrefix",
+        replaceWith = ReplaceWith("stringMessageToStringNoPrefix(category, key, placeholders)"),
+        level = DeprecationLevel.WARNING
+    )
     fun getCleanMessage(
         category: String,
         key: String,
@@ -197,6 +289,15 @@ class MessageHandler(
         }
     }
 
+    /**
+     * @deprecated Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach.
+     *  Użyj zamiast niej: {@link #stringMessageToComponentNoPrefix}
+     */
+    @Deprecated(
+        "Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach. Użyj: stringMessageToComponentNoPrefix",
+        replaceWith = ReplaceWith("stringMessageToComponentNoPrefix(category, key, placeholders)"),
+        level = DeprecationLevel.WARNING
+    )
     fun getLogMessage(
         category: String,
         key: String,
@@ -208,29 +309,6 @@ class MessageHandler(
             val raw = yamlConfig.getString("$category.$key")
                 ?: errorLogAndDefault(category, key)
             formatMixedTextToMiniMessage(raw, resolver)
-        }
-    }
-
-    @Deprecated(
-        message = "Use getSmartMessage instead",
-        replaceWith = ReplaceWith("getSmartMessage(category, key, placeholders)")
-    )
-    fun getComplexMessage(
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): List<Component> {
-        val cacheKey = composeKey(category, key, placeholders)
-        val resolver = createResolver(placeholders)
-        return complexCache.get(cacheKey) {
-            val list = yamlConfig.getStringList("$category.$key")
-            if (list.isEmpty()) {
-                listOf(Component.text("Message list not found. Check console..."))
-            } else {
-                list.map { raw ->
-                    formatMixedTextToMiniMessage(raw, resolver)
-                }
-            }
         }
     }
 
@@ -262,20 +340,21 @@ class MessageHandler(
         }
     }
 
+    /**
+     * @deprecated Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach.
+     *  Użyj zamiast niej: {@link #getMessageStringList}
+     */
+    @Deprecated(
+        "Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach. Użyj: getMessageStringList",
+        replaceWith = ReplaceWith("getMessageStringList(category, key)"),
+        level = DeprecationLevel.WARNING
+    )
     fun getReasons(category: String, key: String): List<String> {
         return yamlConfig.getStringList("$category.$key")
     }
 
     fun formatLegacyText(message: String): Component {
         return LegacyComponentSerializer.legacyAmpersand().deserialize(message)
-    }
-
-    @Deprecated(
-        message = "Use formatLegacyText instead",
-        replaceWith = ReplaceWith("formatLegacyText(message)")
-    )
-    fun formatLegacyTextBukkit(message: String): String {
-        return ChatColor.translateAlternateColorCodes('&', message)
     }
 
     fun formatHexAndLegacyText(message: String): Component {
