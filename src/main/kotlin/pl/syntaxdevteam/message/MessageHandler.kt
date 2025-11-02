@@ -167,7 +167,7 @@ class MessageHandler(
             val raw = yamlConfig.getString("$category.$key")
                 ?: errorLogAndDefault(category, key)
             val full = "$prefix $raw"
-            mM.deserialize(full, resolver)
+            formatMixedTextToMiniMessage(full, resolver)
         }
     }
 
@@ -195,9 +195,8 @@ class MessageHandler(
         return simpleCache.get(cacheKey) {
             val raw = yamlConfig.getString("$category.$key")
                 ?: errorLogAndDefault(category, key)
-            val parsed = mM.deserialize(raw, resolver)
-            val serialized = mM.serialize(parsed)
-            "$prefix $serialized"
+            val parsed = formatMixedTextToMiniMessage("$prefix $raw", resolver)
+            mM.serialize(parsed)
         }
     }
 
@@ -211,7 +210,7 @@ class MessageHandler(
         return cleanCache.get(cacheKey) {
             val raw = yamlConfig.getString("$category.$key")
                 ?: errorLogAndDefault(category, key)
-            val parsed = mM.deserialize(raw, resolver)
+            val parsed = formatMixedTextToMiniMessage(raw, resolver)
             mM.serialize(parsed)
         }
     }
@@ -236,7 +235,7 @@ class MessageHandler(
             val raw = yamlConfig.getString("$category.$key")
                 ?: errorLogAndDefault(category, key)
             val full = "$prefix $raw"
-            mM.deserialize(full, resolver)
+            formatMixedTextToMiniMessage(full, resolver)
         }
     }
 
@@ -259,9 +258,8 @@ class MessageHandler(
         return simpleCache.get(cacheKey) {
             val raw = yamlConfig.getString("$category.$key")
                 ?: errorLogAndDefault(category, key)
-            val parsed = mM.deserialize(raw, resolver)
-            val serialized = mM.serialize(parsed)
-            "$prefix $serialized"
+            val parsed = formatMixedTextToMiniMessage("$prefix $raw", resolver)
+            mM.serialize(parsed)
         }
     }
 
@@ -284,7 +282,7 @@ class MessageHandler(
         return cleanCache.get(cacheKey) {
             val raw = yamlConfig.getString("$category.$key")
                 ?: errorLogAndDefault(category, key)
-            val parsed = mM.deserialize(raw, resolver)
+            val parsed = formatMixedTextToMiniMessage(raw, resolver)
             mM.serialize(parsed)
         }
     }
