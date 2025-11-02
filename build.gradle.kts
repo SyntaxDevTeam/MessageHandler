@@ -1,13 +1,13 @@
 import org.gradle.api.publish.maven.MavenPublication
 
 plugins {
-    kotlin("jvm") version "2.2.20"
+    kotlin("jvm") version "2.2.21"
     id("com.gradleup.shadow") version "9.2.2"
     `maven-publish`
 }
 
 group = "pl.syntaxdevteam"
-version = "1.0.2-SNAPSHOT"
+version = "1.0.3"
 description = "Standalone MessageHandler library extracted from SyntaxCore."
 
 repositories {
@@ -22,7 +22,7 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.10-R0.1-SNAPSHOT")
-    compileOnly("com.github.ben-manes.caffeine:caffeine:3.2.2")
+    compileOnly("com.github.ben-manes.caffeine:caffeine:3.2.3")
     api("net.kyori:adventure-text-serializer-legacy:4.25.0")
     api("net.kyori:adventure-text-minimessage:4.25.0")
     api("net.kyori:adventure-text-serializer-plain:4.25.0")
