@@ -33,14 +33,22 @@ class TwojPLuginX : JavaPlugin() {
  * `reloadMessages()` – ponownie wczytuje konfigurację językową i czyści wszystkie cache wiadomości, by kolejne odczyty korzystały z aktualnych danych. **Dodaje się najczęściej do komendy reload.**
  * `getPrefix()` – zwraca aktualny prefiks dodawany do wiadomości użytkownika.
  * `stringMessageToComponent(category, key, placeholders)` – podstawowa metoda która buduje komponent MiniMessage z prefiksem na podstawie wpisu YAML i podstawionych placeholderów.
+   <img width="819" height="87" alt="image" src="https://github.com/user-attachments/assets/7af2c065-49ce-4333-8a6b-45aa2639fc42" />
+
     Przykład użycia:
    
     ```kotlin
     val wiadomosc = messageHandler.stringMessageToComponent("errors", "no-permission", map.of("player", playerName))
     ```
  * `stringMessageToString(category, key, placeholders)` – zwraca sformatowany tekst MiniMessage jako String z prefiksem, zachowując kolory i placeholdery stosowana tam gdzie wymagany jest czysty String zamiast komponentu.
+   <img width="988" height="61" alt="image" src="https://github.com/user-attachments/assets/0fb676da-cff7-4c49-878c-d6e8cfa2c44a" />
+
  * `stringMessageToStringNoPrefix(category, key, placeholders)` – tak jak powyższa metoda ale ta zwraca treść wiadomości jako „czysty” String **bez prefiksu**, ale po przetworzeniu MiniMessage.
+   <img width="713" height="28" alt="image" src="https://github.com/user-attachments/assets/8225a929-37d5-49af-862f-135d3ab03700" />
+
  * `stringMessageToComponentNoPrefix(category, key, placeholders)` – generuje komponent przeznaczony nie tylko do logów ale napisany z myślą o nich, konwertując zapis legacy/section na MiniMessage i pomijając prefiks.
+   <img width="449" height="27" alt="image" src="https://github.com/user-attachments/assets/554ea0c8-044d-4f6b-861a-5efa0e7e7bfc" />
+
    
     Przykłąd użycia:
     ```kotlin
@@ -54,6 +62,8 @@ class TwojPLuginX : JavaPlugin() {
       ```YAML
         broadcast: "<dark_gray>Gracz <gray><player></gray> został wyrzucony z powodu <gray><reason></gray></dark_gray>"
      ```
+     <img width="930" height="29" alt="image" src="https://github.com/user-attachments/assets/e2f25a77-3a80-46b1-8701-448866d6b273" />
+
       Wersja 2 – lista wpisów tekstowych:
      ```YAML
       broadcast:
@@ -63,7 +73,10 @@ class TwojPLuginX : JavaPlugin() {
         - "   Powód: <white><reason></white>"
         - ""
         - "<dark_gray>*************************************************** </dark_gray>"
-        ```
+     ```
+
+     <img width="620" height="160" alt="image" src="https://github.com/user-attachments/assets/6ab18817-9a00-487d-ae62-6422fb968738" />
+
 ### Metody do formatowania tekstu
  * `formatLegacyText(message)` – konwertuje tekst w formacie &-color na komponent MiniMessage. Czyli formatowanie wszystkich formatów Minecraft typu `&a`, `&l`, `&n` itp.
  * `formatHexAndLegacyText(message)` – obsługuje zarówno kody `&#rrggbb`, jak i `§` podczas konwersji do komponentu.
