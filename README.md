@@ -17,9 +17,9 @@ repositories {
 
 dependencies {
     // Paper/Folia
-    implementation("pl.syntaxdevteam:messageHandler-paper:1.0.3")
+    implementation("pl.syntaxdevteam:messageHandler-paper:1.0.0")
     // lub Spigot/Bukkit
-    // implementation("pl.syntaxdevteam:messageHandler-spigot:1.0.3")
+    // implementation("pl.syntaxdevteam:messageHandler-spigot:1.0.0")
     implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
 }
 ```
