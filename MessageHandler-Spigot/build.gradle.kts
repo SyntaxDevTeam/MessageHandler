@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "pl.syntaxdevteam"
-version = "1.0.4a-DEV"
+version = "1.0.0"
 description = "MessageHandler implementation for Bukkit and Spigot servers."
 
 repositories {
@@ -47,7 +47,7 @@ val sourcesJar by tasks.registering(Jar::class) {
 
 publishing {
     publications {
-        create<MavenPublication>("messageHandlerSpigot") {
+        create<MavenPublication>("messageHandler") {
             artifactId = "messageHandler-spigot"
             artifact(tasks.named("shadowJar").get()) {
                 classifier = null

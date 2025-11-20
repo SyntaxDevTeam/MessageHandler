@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "pl.syntaxdevteam"
-version = "1.0.3"
+version = "1.0.0"
 description = "MessageHandler implementation for Paper and Folia servers."
 
 repositories {
@@ -47,7 +47,7 @@ val sourcesJar by tasks.registering(Jar::class) {
 
 publishing {
     publications {
-        create<MavenPublication>("messageHandlerPaper") {
+        create<MavenPublication>("messageHandler") {
             artifactId = "messageHandler-paper"
             artifact(tasks.named("shadowJar").get()) {
                 classifier = null
