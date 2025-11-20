@@ -1,98 +1,29 @@
-import org.gradle.api.publish.maven.MavenPublication
-
 plugins {
-    kotlin("jvm") version "2.2.21"
-    id("com.gradleup.shadow") version "9.2.2"
-    `maven-publish`
+    kotlin("jvm") version "2.2.21" apply false
+    id("com.gradleup.shadow") version "9.2.2" apply false
 }
 
 group = "pl.syntaxdevteam"
-version = "1.0.3"
-description = "Standalone MessageHandler library extracted from SyntaxCore."
+version = "1.0.4-DEV"
 
-repositories {
-    mavenCentral()
-    maven("https://repo.papermc.io/repository/maven-public/") {
-        name = "papermc-repo"
-    }
-    maven("https://oss.sonatype.org/content/groups/public/") {
-        name = "sonatype"
-    }
+tasks.wrapper {
+    distributionType = Wrapper.DistributionType.BIN
 }
 
-dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.10-R0.1-SNAPSHOT")
-    compileOnly("com.github.ben-manes.caffeine:caffeine:3.2.3")
-    api("net.kyori:adventure-text-serializer-legacy:4.25.0")
-    api("net.kyori:adventure-text-minimessage:4.25.0")
-    api("net.kyori:adventure-text-serializer-plain:4.25.0")
-    api("net.kyori:adventure-text-serializer-ansi:4.25.0")
-}
+allprojects {
+    group = rootProject.group
+    version = rootProject.version
 
-val targetJavaVersion = 21
-kotlin {
-    jvmToolchain(targetJavaVersion)
-}
-
-tasks{
-    build {
-        dependsOn("shadowJar")
-    }
-    processResources {
-        val props = mapOf("version" to version, "description" to description)
-        inputs.properties(props)
-        filteringCharset = "UTF-8"
-        filesMatching("paper-plugin.yml") {
-            expand(props)
-        }
-    }
-}
-
-
-
-val sourcesJar by tasks.registering(Jar::class) {
-    archiveClassifier.set("sources")
-    from(sourceSets.main.get().allSource)
-}
-
-publishing {
-    publications {
-        create<MavenPublication>("messageHandler") {
-            artifactId = "messageHandler"
-            artifact(tasks.named("shadowJar").get()) {
-                classifier = null
-            }
-            artifact(sourcesJar.get())
-
-            pom {
-                name.set("MessageHandler")
-                description.set(project.description)
-                url.set("https://github.com/SyntaxDevTeam/MessageHandler")
-                licenses {
-                    license {
-                        name.set("MIT License")
-                        url.set("https://opensource.org/licenses/MIT")
-                    }
-                }
-                developers {
-                    developer {
-                        id.set("WieszczY85")
-                        name.set("WieszczY")
-                    }
-                }
-            }
-        }
-    }
     repositories {
-        maven {
-            name = "Nexus"
-            val releasesRepoUrl = uri("https://nexus.syntaxdevteam.pl/repository/maven-releases/")
-            val snapshotsRepoUrl = uri("https://nexus.syntaxdevteam.pl/repository/maven-snapshots/")
-            url = if (version.toString().endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
-            credentials {
-                username = findProperty("nexusUser")?.toString()
-                password = findProperty("nexusPassword")?.toString()
-            }
+        mavenCentral()
+        maven("https://repo.papermc.io/repository/maven-public/") {
+            name = "papermc-repo"
+        }
+        maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/") {
+            name = "spigotmc-repo"
+        }
+        maven("https://oss.sonatype.org/content/groups/public/") {
+            name = "sonatype"
         }
     }
 }

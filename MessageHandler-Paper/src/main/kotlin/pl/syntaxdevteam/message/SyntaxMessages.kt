@@ -8,7 +8,7 @@ import java.util.logging.Logger
 /**
  * Provides a convenient entry-point mirroring the historical `SyntaxCore.messages`
  * accessor so that plugins can use the standalone [MessageHandler] with minimal
- * boilerplate.
+ * boilerplate on Paper/Folia platforms.
  */
 object SyntaxMessages {
     @Volatile

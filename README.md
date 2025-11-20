@@ -1,8 +1,13 @@
 # MessageHandler
 ## Opis
 Autorska biblioteka do kompleksowej obsługi wiadomości i plików językowych dla pluginów.
+
+## Warianty
+- **MessageHandler-Paper** – wersja dla serwerów Paper/Folia i kompatybilnych forków.
+- **MessageHandler-Spigot** – odpowiednik dla serwerów Bukkit/Spigot.
+
 ## Jak dodać?
-Dodaj do build.gradle.kts:
+Dodaj do build.gradle.kts odpowiednią wersję:
 ```kotlin
 repositories {
     mavenCentral()
@@ -11,7 +16,10 @@ repositories {
 }
 
 dependencies {
-    implementation("pl.syntaxdevteam:messageHandler:1.0.3")
+    // Paper/Folia
+    implementation("pl.syntaxdevteam:messageHandler-paper:1.0.3")
+    // lub Spigot/Bukkit
+    // implementation("pl.syntaxdevteam:messageHandler-spigot:1.0.3")
     implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
 }
 ```
