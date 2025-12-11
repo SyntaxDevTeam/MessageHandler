@@ -156,16 +156,34 @@ class MessageHandler(
         }
     }
 
+    private fun <T> cacheMessage(
+        category: String,
+        key: String,
+        placeholders: Map<String, String>,
+        cache: Cache<String, T>,
+        cacheKeyPrefix: String = "",
+        transform: (raw: String, resolver: TagResolver) -> T
+    ): T {
+        val cacheKey = cacheKeyPrefix + composeKey(category, key, placeholders)
+        val resolver = createResolver(placeholders)
+        return cache.get(cacheKey) {
+            val raw = yamlConfig.getString("$category.$key")
+                ?: errorLogAndDefault(category, key)
+            transform(raw, resolver)
+        }
+    }
+
     fun stringMessageToComponent(
         category: String,
         key: String,
         placeholders: Map<String, String> = emptyMap()
     ): Component {
-        val cacheKey = composeKey(category, key, placeholders)
-        val resolver = createResolver(placeholders)
-        return componentCache.get(cacheKey) {
-            val raw = yamlConfig.getString("$category.$key")
-                ?: errorLogAndDefault(category, key)
+        return cacheMessage(
+            category,
+            key,
+            placeholders,
+            componentCache
+        ) { raw, resolver ->
             val full = "$prefix $raw"
             formatMixedTextToMiniMessage(full, resolver)
         }
@@ -176,11 +194,13 @@ class MessageHandler(
         key: String,
         placeholders: Map<String, String> = emptyMap()
     ): Component {
-        val cacheKey = composeKey(category, key, placeholders)
-        val resolver = createResolver(placeholders)
-        return componentCache.get("log.$cacheKey") {
-            val raw = yamlConfig.getString("$category.$key")
-                ?: errorLogAndDefault(category, key)
+        return cacheMessage(
+            category,
+            key,
+            placeholders,
+            componentCache,
+            cacheKeyPrefix = "log."
+        ) { raw, resolver ->
             formatMixedTextToMiniMessage(raw, resolver)
         }
     }
@@ -190,11 +210,12 @@ class MessageHandler(
         key: String,
         placeholders: Map<String, String> = emptyMap()
     ): String {
-        val cacheKey = composeKey(category, key, placeholders)
-        val resolver = createResolver(placeholders)
-        return simpleCache.get(cacheKey) {
-            val raw = yamlConfig.getString("$category.$key")
-                ?: errorLogAndDefault(category, key)
+        return cacheMessage(
+            category,
+            key,
+            placeholders,
+            simpleCache
+        ) { raw, resolver ->
             val parsed = formatMixedTextToMiniMessage("$prefix $raw", resolver)
             mM.serialize(parsed)
         }
@@ -205,11 +226,12 @@ class MessageHandler(
         key: String,
         placeholders: Map<String, String> = emptyMap()
     ): String {
-        val cacheKey = composeKey(category, key, placeholders)
-        val resolver = createResolver(placeholders)
-        return cleanCache.get(cacheKey) {
-            val raw = yamlConfig.getString("$category.$key")
-                ?: errorLogAndDefault(category, key)
+        return cacheMessage(
+            category,
+            key,
+            placeholders,
+            cleanCache
+        ) { raw, resolver ->
             val parsed = formatMixedTextToMiniMessage(raw, resolver)
             mM.serialize(parsed)
         }
@@ -229,14 +251,7 @@ class MessageHandler(
         level = DeprecationLevel.WARNING
     )
     fun getMessage(category: String, key: String, placeholders: Map<String, String> = emptyMap()): Component {
-        val cacheKey = composeKey(category, key, placeholders)
-        val resolver = createResolver(placeholders)
-        return componentCache.get(cacheKey) {
-            val raw = yamlConfig.getString("$category.$key")
-                ?: errorLogAndDefault(category, key)
-            val full = "$prefix $raw"
-            formatMixedTextToMiniMessage(full, resolver)
-        }
+        return stringMessageToComponent(category, key, placeholders)
     }
 
     /**
@@ -253,14 +268,7 @@ class MessageHandler(
         key: String,
         placeholders: Map<String, String> = emptyMap()
     ): String {
-        val cacheKey = composeKey(category, key, placeholders)
-        val resolver = createResolver(placeholders)
-        return simpleCache.get(cacheKey) {
-            val raw = yamlConfig.getString("$category.$key")
-                ?: errorLogAndDefault(category, key)
-            val parsed = formatMixedTextToMiniMessage("$prefix $raw", resolver)
-            mM.serialize(parsed)
-        }
+        return stringMessageToString(category, key, placeholders)
     }
 
     /**
@@ -277,14 +285,7 @@ class MessageHandler(
         key: String,
         placeholders: Map<String, String> = emptyMap()
     ): String {
-        val cacheKey = composeKey(category, key, placeholders)
-        val resolver = createResolver(placeholders)
-        return cleanCache.get(cacheKey) {
-            val raw = yamlConfig.getString("$category.$key")
-                ?: errorLogAndDefault(category, key)
-            val parsed = formatMixedTextToMiniMessage(raw, resolver)
-            mM.serialize(parsed)
-        }
+        return stringMessageToStringNoPrefix(category, key, placeholders)
     }
 
     /**
@@ -301,13 +302,7 @@ class MessageHandler(
         key: String,
         placeholders: Map<String, String> = emptyMap()
     ): Component {
-        val cacheKey = composeKey(category, key, placeholders)
-        val resolver = createResolver(placeholders)
-        return componentCache.get("log.$cacheKey") {
-            val raw = yamlConfig.getString("$category.$key")
-                ?: errorLogAndDefault(category, key)
-            formatMixedTextToMiniMessage(raw, resolver)
-        }
+        return stringMessageToComponentNoPrefix(category, key, placeholders)
     }
 
     fun getSmartMessage(
