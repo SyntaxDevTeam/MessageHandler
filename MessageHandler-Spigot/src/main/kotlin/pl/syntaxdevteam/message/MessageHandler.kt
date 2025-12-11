@@ -437,4 +437,14 @@ class MessageHandler(
             mM.deserialize(formattedMessage)
         }
     }
+
+    fun formatMixedTextToLegacy(message: String, resolver: TagResolver? = TagResolver.empty()): String {
+        val component = formatMixedTextToMiniMessage(message, resolver)
+        return LegacyComponentSerializer
+            .legacyAmpersand()
+            .toBuilder()
+            .hexColors()
+            .build()
+            .serialize(component)
+    }
 }
