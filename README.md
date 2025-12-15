@@ -26,6 +26,10 @@ dependencies {
     // lub Spigot/Bukkit
     // implementation("pl.syntaxdevteam:messageHandler-spigot:1.0.2-SNAPSHOT")
     implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
+    compileOnly("net.kyori:adventure-text-serializer-legacy:4.25.0")
+    compileOnly("net.kyori:adventure-text-minimessage:4.25.0")
+    compileOnly("net.kyori:adventure-text-serializer-plain:4.25.0")
+    compileOnly("net.kyori:adventure-text-serializer-ansi:4.25.0")
 }
 ```
 W klasię głownej dodaj:

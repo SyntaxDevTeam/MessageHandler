@@ -162,9 +162,14 @@ class MessageHandler(
         placeholders: Map<String, String>,
         cache: Cache<String, T>,
         cacheKeyPrefix: String = "",
+        formatHint: MessageFormat? = null,
         transform: (raw: String, resolver: TagResolver) -> T
     ): T {
-        val cacheKey = cacheKeyPrefix + composeKey(category, key, placeholders)
+        val cacheKey = buildString {
+            append(cacheKeyPrefix)
+            formatHint?.let { append("format:").append(it.name).append('|') }
+            append(composeKey(category, key, placeholders))
+        }
         val resolver = createResolver(placeholders)
         return cache.get(cacheKey) {
             val raw = yamlConfig.getString("$category.$key")
@@ -185,7 +190,25 @@ class MessageHandler(
             componentCache
         ) { raw, resolver ->
             val full = "$prefix $raw"
-            formatMixedTextToMiniMessage(full, resolver)
+            parseMixedMessage(full, resolver).component
+        }
+    }
+
+    fun stringMessageToComponent(
+        category: String,
+        key: String,
+        format: MessageFormat,
+        placeholders: Map<String, String> = emptyMap()
+    ): Component {
+        return cacheMessage(
+            category,
+            key,
+            placeholders,
+            componentCache,
+            formatHint = format
+        ) { raw, resolver ->
+            val full = "$prefix $raw"
+            parseMixedMessage(full, resolver, format).component
         }
     }
 
@@ -201,7 +224,25 @@ class MessageHandler(
             componentCache,
             cacheKeyPrefix = "log."
         ) { raw, resolver ->
-            formatMixedTextToMiniMessage(raw, resolver)
+            parseMixedMessage(raw, resolver).component
+        }
+    }
+
+    fun stringMessageToComponentNoPrefix(
+        category: String,
+        key: String,
+        format: MessageFormat,
+        placeholders: Map<String, String> = emptyMap()
+    ): Component {
+        return cacheMessage(
+            category,
+            key,
+            placeholders,
+            componentCache,
+            cacheKeyPrefix = "log.",
+            formatHint = format
+        ) { raw, resolver ->
+            parseMixedMessage(raw, resolver, format).component
         }
     }
 
@@ -216,8 +257,26 @@ class MessageHandler(
             placeholders,
             simpleCache
         ) { raw, resolver ->
-            val parsed = formatMixedTextToMiniMessage("$prefix $raw", resolver)
-            mM.serialize(parsed)
+            val parsed = parseMixedMessage("$prefix $raw", resolver)
+            serializeComponent(parsed)
+        }
+    }
+
+    fun stringMessageToString(
+        category: String,
+        key: String,
+        format: MessageFormat,
+        placeholders: Map<String, String> = emptyMap()
+    ): String {
+        return cacheMessage(
+            category,
+            key,
+            placeholders,
+            simpleCache,
+            formatHint = format
+        ) { raw, resolver ->
+            val parsed = parseMixedMessage("$prefix $raw", resolver, format)
+            serializeComponent(parsed)
         }
     }
 
@@ -232,8 +291,26 @@ class MessageHandler(
             placeholders,
             cleanCache
         ) { raw, resolver ->
-            val parsed = formatMixedTextToMiniMessage(raw, resolver)
-            mM.serialize(parsed)
+            val parsed = parseMixedMessage(raw, resolver)
+            serializeComponent(parsed)
+        }
+    }
+
+    fun stringMessageToStringNoPrefix(
+        category: String,
+        key: String,
+        format: MessageFormat,
+        placeholders: Map<String, String> = emptyMap()
+    ): String {
+        return cacheMessage(
+            category,
+            key,
+            placeholders,
+            cleanCache,
+            formatHint = format
+        ) { raw, resolver ->
+            val parsed = parseMixedMessage(raw, resolver, format)
+            serializeComponent(parsed)
         }
     }
 
@@ -420,26 +497,87 @@ class MessageHandler(
     }
 
     fun formatMixedTextToMiniMessage(message: String, resolver: TagResolver? = TagResolver.empty()): Component {
-        var formattedMessage = message
-        formattedMessage = convertSectionSignToMiniMessage(formattedMessage)
-        formattedMessage = convertLegacyToMiniMessage(formattedMessage)
-        if (formattedMessage.contains("\\u")) {
-            formattedMessage = convertUnicodeEscapeSequences(formattedMessage)
-        }
-        return if (resolver != null) {
-            mM.deserialize(formattedMessage, resolver)
-        } else {
-            mM.deserialize(formattedMessage)
-        }
+        return parseMixedMessage(message, resolver).component
+    }
+
+    fun formatTextToComponent(
+        message: String,
+        format: MessageFormat,
+        resolver: TagResolver? = TagResolver.empty()
+    ): Component {
+        return parseMixedMessage(message, resolver, format).component
     }
 
     fun formatMixedTextToLegacy(message: String, resolver: TagResolver? = TagResolver.empty()): String {
-        val component = formatMixedTextToMiniMessage(message, resolver)
-        return LegacyComponentSerializer
-            .legacyAmpersand()
-            .toBuilder()
-            .hexColors()
-            .build()
-            .serialize(component)
+        val parsed = parseMixedMessage(message, resolver)
+        return serializeComponent(parsed, MessageFormat.LEGACY_AMPERSAND)
+    }
+
+    private fun parseMixedMessage(
+        message: String,
+        resolver: TagResolver?,
+        formatHint: MessageFormat? = null
+    ): ParsedMessage {
+        val normalized = if (message.contains("\\u")) convertUnicodeEscapeSequences(message) else message
+        val format = formatHint ?: detectMessageFormat(normalized)
+        val component = when (format) {
+            MessageFormat.MINI_MESSAGE -> deserializeMiniMessage(normalized, resolver)
+            MessageFormat.LEGACY_SECTION -> deserializeMiniMessage(convertSectionSignToMiniMessage(normalized), resolver)
+            MessageFormat.LEGACY_AMPERSAND -> deserializeMiniMessage(convertLegacyToMiniMessage(normalized), resolver)
+            MessageFormat.PLAIN -> Component.text(normalized)
+        }
+        return ParsedMessage(component, format)
+    }
+
+    private fun deserializeMiniMessage(message: String, resolver: TagResolver?): Component {
+        return if (resolver != null) {
+            mM.deserialize(message, resolver)
+        } else {
+            mM.deserialize(message)
+        }
+    }
+
+    private fun detectMessageFormat(message: String): MessageFormat {
+        val hasMiniMessageTags = "<[^>]+>".toRegex().containsMatchIn(message)
+        val hasSectionColors = "§[0-9a-fk-orA-FK-OR]".toRegex().containsMatchIn(message)
+        val hasLegacyColors = "&[0-9a-fk-orA-FK-OR]".toRegex().containsMatchIn(message)
+
+        return when {
+            hasMiniMessageTags -> MessageFormat.MINI_MESSAGE
+            hasSectionColors -> MessageFormat.LEGACY_SECTION
+            hasLegacyColors -> MessageFormat.LEGACY_AMPERSAND
+            else -> MessageFormat.PLAIN
+        }
+    }
+
+    private fun serializeComponent(parsedMessage: ParsedMessage, targetFormat: MessageFormat = parsedMessage.sourceFormat): String {
+        return when (targetFormat) {
+            MessageFormat.MINI_MESSAGE -> mM.serialize(parsedMessage.component)
+            MessageFormat.LEGACY_SECTION -> LegacyComponentSerializer
+                .legacySection()
+                .toBuilder()
+                .hexColors()
+                .build()
+                .serialize(parsedMessage.component)
+            MessageFormat.LEGACY_AMPERSAND -> LegacyComponentSerializer
+                .legacyAmpersand()
+                .toBuilder()
+                .hexColors()
+                .build()
+                .serialize(parsedMessage.component)
+            MessageFormat.PLAIN -> getPlainText(parsedMessage.component)
+        }
+    }
+
+    private data class ParsedMessage(
+        val component: Component,
+        val sourceFormat: MessageFormat
+    )
+
+    enum class MessageFormat {
+        MINI_MESSAGE,
+        LEGACY_SECTION,
+        LEGACY_AMPERSAND,
+        PLAIN
     }
 }

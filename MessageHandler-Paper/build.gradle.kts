@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "pl.syntaxdevteam"
-version = "1.0.1"
+version = "1.0.2-SNAPSHOT"
 description = "MessageHandler implementation for Paper and Folia servers."
 
 repositories {
