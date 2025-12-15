@@ -22,9 +22,9 @@ repositories {
 
 dependencies {
     // Paper/Folia
-    implementation("pl.syntaxdevteam:messageHandler-paper:1.0.0")
+    implementation("pl.syntaxdevteam:messageHandler-paper:1.0.2-SNAPSHOT")
     // lub Spigot/Bukkit
-    // implementation("pl.syntaxdevteam:messageHandler-spigot:1.0.0")
+    // implementation("pl.syntaxdevteam:messageHandler-spigot:1.0.2-SNAPSHOT")
     implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
 }
 ```
@@ -97,4 +97,5 @@ class TwojPLuginX : JavaPlugin() {
  * `getANSIText(component)` – serializuje komponent do kolorowego ANSI (np. na konsolę).
  * `getPlainText(component)` – sprowadza komponent do czystego tekstu pozbawionego  formatowania.
  * `formatMixedTextToMiniMessage(message, resolver)` – przyjmuje tekst mieszany (MiniMessage + legacy + § + sekwencje \uXXXX) i zwraca poprawnie zdeserializowany komponent, opcjonalnie z resolverem placeholderów. Najczęściej używane do przetwarzania tekstu wprowadzonych przez użytkowników, bo kompleksowo żąda wszystkie możliwe formaty.
+ * `formatMixedTextToLegacy`(message, resolver)` – przyjmuje tekst mieszany (MiniMessage + legacy + § + sekwencje \uXXXX) i zwraca poprawnie zdeserializowany komponent, opcjonalnie z resolverem placeholderów. Najczęściej używane do przetwarzania tekstu wprowadzonych przez użytkowników, bo kompleksowo żąda wszystkie możliwe formaty.
 ---
