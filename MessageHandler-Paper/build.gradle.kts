@@ -22,7 +22,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.10-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("com.github.ben-manes.caffeine:caffeine:3.2.3")
     compileOnly("net.kyori:adventure-text-serializer-legacy:4.26.1")
     compileOnly("net.kyori:adventure-text-minimessage:4.26.1")

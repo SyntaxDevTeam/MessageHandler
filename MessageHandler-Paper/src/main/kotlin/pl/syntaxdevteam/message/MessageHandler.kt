@@ -2,6 +2,7 @@ package pl.syntaxdevteam.message
 
 import com.github.benmanes.caffeine.cache.Cache
 import com.github.benmanes.caffeine.cache.Caffeine
+import io.papermc.paper.chat.ChatRenderer
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder
@@ -316,6 +317,28 @@ class MessageHandler(
 
     fun getMessageStringList(category: String, key: String): List<String> {
         return yamlConfig.getStringList("$category.$key")
+    }
+
+    /**
+     * Builds a viewer-unaware [ChatRenderer] that formats chat messages using the provided template,
+     * while keeping the original signed message intact.
+     *
+     * Available component placeholders: <player>, <message>.
+     */
+    fun signedChatRenderer(
+        template: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): ChatRenderer {
+        return ChatRenderer.viewerUnaware { _, playerName, message ->
+            val resolvers = placeholders.map { (key, value) ->
+                Placeholder.parsed(key, value)
+            } + listOf(
+                Placeholder.component("player", playerName),
+                Placeholder.component("message", message)
+            )
+            val resolver = TagResolver.resolver(*resolvers.toTypedArray())
+            formatMixedTextToMiniMessage(template, resolver)
+        }
     }
 
     /**
