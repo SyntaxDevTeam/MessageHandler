@@ -1,6 +1,6 @@
 # MessageHandler
 ## Opis
-Autorska biblioteka do kompleksowej obsługi wiadomości i plików językowych dla pluginów.
+Autorska biblioteka do kompleksowej obsługi wiadomości i plików językowych dla pluginów oparta na rozwiązaniach `net.kyori:adventure`.
 
 ## Warianty
 - **MessageHandler-Paper** – wersja dla serwerów Paper/Folia i kompatybilnych forków.
