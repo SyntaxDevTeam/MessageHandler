@@ -84,9 +84,71 @@ class MessageHandler(
         return null
     }
 
+    private fun getVersionFromYamlHeader(langFile: File): String? {
+        if (!langFile.exists()) return null
+        val versionRegex = Regex("""#\s*(?:ver(?:sion)?[:.]?\s*)?(\d+\.\d+\.\d+)""", RegexOption.IGNORE_CASE)
+
+        langFile.useLines { lines ->
+            for ((index, line) in lines.withIndex()) {
+                if (index >= 2) break
+                val trimmed = line.trim()
+                val match = versionRegex.find(trimmed)
+                if (match != null) return match.groupValues[1]
+            }
+        }
+        return null
+    }
+
+    private fun isVersionLowerThan(version: String, reference: String): Boolean {
+        fun parseVersion(value: String): List<Int>? {
+            val parts = value.split(".")
+            if (parts.isEmpty()) return null
+            return parts.map {
+                it.toIntOrNull() ?: return null
+            }
+        }
+
+        val parsedVersion = parseVersion(version) ?: return false
+        val parsedReference = parseVersion(reference) ?: return false
+        val size = maxOf(parsedVersion.size, parsedReference.size)
+        val normalizedVersion = parsedVersion + List(size - parsedVersion.size) { 0 }
+        val normalizedReference = parsedReference + List(size - parsedReference.size) { 0 }
+
+        for (index in 0 until size) {
+            val diff = normalizedVersion[index].compareTo(normalizedReference[index])
+            if (diff < 0) return true
+            if (diff > 0) return false
+        }
+        return false
+    }
+
+    private fun shouldReplaceOutdatedLanguage(langFile: File): Boolean {
+        val version = getVersionFromYamlHeader(langFile) ?: return false
+        if (!isVersionLowerThan(version, "2.0.0")) {
+            logger.success("Detected language file version $version. No replacement required.")
+            return false
+        }
+        return true
+    }
+
     private fun copyDefaultAndSync() {
+        val langDirectory = File(resources.dataFolder, "lang")
         val resourcePath = "lang/messages_${language.lowercase()}.yml"
         val targetFile = File(resources.dataFolder, resourcePath)
+
+        if (langDirectory.exists() && targetFile.exists() && shouldReplaceOutdatedLanguage(targetFile)) {
+            val backupDirectory = File(resources.dataFolder, "lang_old_ver")
+            if (backupDirectory.exists()) {
+                backupDirectory.deleteRecursively()
+            }
+
+            if (langDirectory.renameTo(backupDirectory)) {
+                logger.success("Detected outdated language files (version below 2.0.0). Backed up current lang directory to lang_old_ver.")
+            } else {
+                logger.err("Failed to backup outdated language directory to lang_old_ver.")
+            }
+        }
+
         if (!targetFile.exists()) {
             targetFile.parentFile.mkdirs()
             resources.saveResource(resourcePath, false)
