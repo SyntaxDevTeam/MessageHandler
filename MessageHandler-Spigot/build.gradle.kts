@@ -1,11 +1,3 @@
-plugins {
-    kotlin("jvm")
-    id("com.gradleup.shadow")
-    `maven-publish`
-}
-
-group = "pl.syntaxdevteam"
-version = "1.0.2-SNAPSHOT"
 description = "MessageHandler implementation for Bukkit and Spigot servers."
 
 repositories {

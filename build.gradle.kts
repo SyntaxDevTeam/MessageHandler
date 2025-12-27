@@ -27,3 +27,9 @@ allprojects {
         }
     }
 }
+
+subprojects {
+    apply(plugin = "org.jetbrains.kotlin.jvm")
+    apply(plugin = "com.gradleup.shadow")
+    apply(plugin = "maven-publish")
+}

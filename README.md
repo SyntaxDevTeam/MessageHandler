@@ -5,6 +5,8 @@ Autorska biblioteka do kompleksowej obsługi wiadomości i plików językowych d
 ## Warianty
 - **MessageHandler-Paper** – wersja dla serwerów Paper/Folia i kompatybilnych forków.
 - **MessageHandler-Spigot** – odpowiednik dla serwerów Bukkit/Spigot.
+- **MessageHandler-BungeeCord** – wersja przygotowana pod proxy BungeeCord.
+- **MessageHandler-Velocity** – wersja przygotowana pod proxy Velocity.
 
 ## Jak dodać?
 Dodaj do build.gradle.kts odpowiednią wersję:  
@@ -25,6 +27,10 @@ dependencies {
     implementation("pl.syntaxdevteam:messageHandler-paper:1.0.2-SNAPSHOT")
     // lub Spigot/Bukkit
     // implementation("pl.syntaxdevteam:messageHandler-spigot:1.0.2-SNAPSHOT")
+    // lub BungeeCord
+    // implementation("pl.syntaxdevteam:messageHandler-bungeecord:1.0.2-SNAPSHOT")
+    // lub Velocity
+    // implementation("pl.syntaxdevteam:messageHandler-velocity:1.0.2-SNAPSHOT")
     implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
     compileOnly("net.kyori:adventure-text-serializer-legacy:4.25.0")
     compileOnly("net.kyori:adventure-text-minimessage:4.25.0")
