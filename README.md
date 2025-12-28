@@ -38,7 +38,7 @@ dependencies {
     compileOnly("net.kyori:adventure-text-serializer-ansi:${latestVersion}")
 }
 ```
-W klasię głownej dodaj:
+W klasie głównej dodaj:
 ```kotlin
 import pl.syntaxdevteam.message.SyntaxMessages
 
