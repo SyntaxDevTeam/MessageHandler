@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "pl.syntaxdevteam"
-version = "1.1.0-SNAPSHOT"
+version = "1.1.0-R0.1-SNAPSHOT"
 
 tasks.wrapper {
     distributionType = Wrapper.DistributionType.BIN

@@ -16,6 +16,17 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 @Suppress("unused")
+/**
+ * Centralny serwis do wczytywania, buforowania i formatowania wiadomości z plików językowych.
+ *
+ * Klasa odpowiada za:
+ * - synchronizację domyślnych plików językowych z katalogiem danych pluginu,
+ * - wykrywanie przestarzałych tłumaczeń oraz ich automatyczny backup,
+ * - parsowanie tekstu złożonego z MiniMessage, starych kodów kolorów (§ oraz &)
+ *   oraz czystego tekstu,
+ * - buforowanie wyników serializacji w kilku postaciach (Component, String, listy),
+ * - udostępnianie wygodnych metod do pobierania wiadomości z prefiksem i bez.
+ */
 class MessageHandler(
     private val resources: ResourceProvider,
     private val meta: PluginMetaProvider,
@@ -60,14 +71,32 @@ class MessageHandler(
         reloadMessages()
     }
 
+    /**
+        * Ładuje bieżący plik YAML z wiadomościami z dysku.
+        *
+        * Funkcja jest izolowana, aby można ją było łatwo podmienić w testach lub przy
+        * przyszłych zmianach sposobu wczytywania konfiguracji.
+        */
     private fun loadYaml(): FileConfiguration =
         YamlConfiguration.loadConfiguration(messagesFile)
 
+    /**
+     * Loguje informację o autorze pliku językowego po pierwszym wczytaniu handlera.
+     *
+     * Funkcja jest przewidziana do jednorazowego wywołania po konstrukcji – pozwala
+     * zweryfikować, że plik został wykryty, a język został prawidłowo dobrany do
+     * konfiguracji.
+     */
     fun initial() {
         val author = getAuthorFromYamlComment() ?: "SyntaxDevTeam"
         logger.success("<gray>Loaded \"$language\" language file by: <white><b>$author</b></white>")
     }
 
+    /**
+     * Odczytuje autora pliku językowego z komentarza w pierwszych liniach pliku.
+     *
+     * @return wartość po `# Author:` lub `null`, gdy plik nie istnieje albo nie ma komentarza.
+     */
     private fun getAuthorFromYamlComment(): String? {
         val path = "lang/messages_${language.lowercase()}.yml"
         val langFile = File(resources.dataFolder, path)
@@ -83,6 +112,12 @@ class MessageHandler(
         return null
     }
 
+    /**
+     * Ekstrahuje oznaczenie wersji z nagłówka pliku językowego, jeśli jest obecne.
+     *
+     * @param langFile plik z katalogu lang, z którego ma być czytana wersja.
+     * @return wersja w formacie semantycznym albo `null`, gdy nie znaleziono nagłówka.
+     */
     private fun getVersionFromYamlHeader(langFile: File): String? {
         if (!langFile.exists()) return null
         val versionRegex = Regex("""#\s*(?:ver(?:sion)?[:.]?\s*)?(\d+\.\d+\.\d+)""", RegexOption.IGNORE_CASE)
@@ -98,6 +133,16 @@ class MessageHandler(
         return null
     }
 
+    /**
+     * Sprawdza, czy numer wersji jest starszy od wersji referencyjnej.
+     *
+     * Porównanie uwzględnia różne długości wersji (np. 1.2 vs 1.2.0) przez
+     * uzupełnienie brakujących segmentów zerami.
+     *
+     * @param version wersja z pliku.
+     * @param reference wersja odniesienia, do której porównujemy.
+     * @return `true`, jeśli `version` jest starsza, `false` w pozostałych przypadkach.
+     */
     private fun isVersionLowerThan(version: String, reference: String): Boolean {
         fun parseVersion(value: String): List<Int>? {
             val parts = value.split(".")
@@ -121,6 +166,13 @@ class MessageHandler(
         return false
     }
 
+    /**
+     * Określa, czy plik językowy powinien zostać zastąpiony domyślną wersją
+     * ze względu na zbyt niską wersję.
+     *
+     * @param langFile istniejący plik w katalogu danych.
+     * @return `true`, jeśli należy wykonać backup i podmianę, `false` w przeciwnym razie.
+     */
     private fun shouldReplaceOutdatedLanguage(langFile: File): Boolean {
         val version = getVersionFromYamlHeader(langFile) ?: return false
         if (!isVersionLowerThan(version, "2.0.0")) {
@@ -130,6 +182,15 @@ class MessageHandler(
         return true
     }
 
+    /**
+     * Synchronizuje domyślne pliki językowe z katalogiem danych pluginu.
+     *
+     * Operacja:
+     * 1. Tworzy kopię zapasową starych plików, jeśli wykryje wersję poniżej 2.0.0.
+     * 2. Kopiuje domyślny plik, jeśli nie istnieje.
+     * 3. Uzupełnia brakujące wpisy w aktualnym pliku na podstawie domyślnego.
+     * 4. Informuje loggerem o każdym z kroków.
+     */
     private fun copyDefaultAndSync() {
         val langDirectory = File(resources.dataFolder, "lang")
         val resourcePath = "lang/messages_${language.lowercase()}.yml"
@@ -185,6 +246,12 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Ponownie wczytuje plik językowy z dysku i czyści wszystkie cache.
+     *
+     * Wywołanie wymagane po zmianie konfiguracji, aby kolejne zapytania korzystały
+     * z najnowszych wartości.
+     */
     fun reloadMessages() {
         yamlConfig = loadYaml()
         prefix = yamlConfig.getString("prefix") ?: "[${meta.name}]"
@@ -194,19 +261,48 @@ class MessageHandler(
         complexCache.invalidateAll()
     }
 
+    /**
+     * Loguje błąd, gdy wpis nie został znaleziony, i zwraca domyślny tekst.
+     *
+     * @param category sekcja YAML, w której szukano.
+     * @param key nazwa wiadomości.
+     */
     private fun errorLogAndDefault(category: String, key: String): String {
         logger.err("Nie można załadować wiadomości $key z kategorii $category")
         return "Message not found!"
     }
 
+    /**
+     * Zwraca aktualny prefiks wiadomości wczytany z konfiguracji.
+     *
+     * Prefiks jest aktualizowany podczas [reloadMessages] i doklejany do większości metod
+     * `stringMessage*`, dzięki czemu pojedyncze wiadomości pozostają spójne stylistycznie.
+     */
     fun getPrefix(): String = prefix
 
+    /**
+     * Buduje [TagResolver] z mapy placeholderów w formie tekstowej.
+     *
+     * Używany w każdej metodzie konwertującej wiadomości, aby parsowanie MiniMessage
+     * mogło wstawić dynamiczne wartości.
+     *
+     * @param placeholders para klucz-wartość przekazywana do MiniMessage.
+     * @return resolver gotowy do użycia w [MiniMessage.deserialize].
+     */
     private fun createResolver(placeholders: Map<String, String>): TagResolver {
         if (placeholders.isEmpty()) return TagResolver.empty()
         val resolvers = placeholders.map { (k, v) -> Placeholder.parsed(k, v) }
         return TagResolver.resolver(resolvers)
     }
 
+    /**
+     * Skleja kategorię, klucz oraz placeholdery w deterministyczny identyfikator
+     * używany w kluczach cache.
+     *
+     * @param category sekcja YAML.
+     * @param key nazwa wiadomości.
+     * @param placeholders placeholdery użyte przy formatowaniu.
+     */
     private fun composeKey(category: String, key: String, placeholders: Map<String, String>): String {
         return buildString {
             append(category).append('.').append(key)
@@ -218,6 +314,17 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Wspólna ścieżka obsługi cache dla wszystkich wariantów zwracających wiadomości.
+     *
+     * @param category sekcja YAML.
+     * @param key nazwa wiadomości.
+     * @param placeholders placeholdery do wypełnienia w treści.
+     * @param cache instancja cache dla typu wyjściowego.
+     * @param cacheKeyPrefix opcjonalny prefiks rozróżniający przestrzenie cache (np. logi).
+     * @param formatHint sugerowany format źródłowy, gdy nie chcemy autodetekcji.
+     * @param transform funkcja przekształcająca surowy tekst na rezultat.
+     */
     private fun <T> cacheMessage(
         category: String,
         key: String,
@@ -240,6 +347,12 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Zwraca wiadomość jako [Component] z automatycznie dodanym prefiksem.
+     *
+     * Korzysta z cache, więc kolejne odczyty są szybkie, a placeholdery
+     * zostają wstawione za pomocą MiniMessage.
+     */
     fun stringMessageToComponent(
         category: String,
         key: String,
@@ -256,6 +369,10 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Jak [stringMessageToComponent], ale z narzuconym formatem źródłowym
+     * (MiniMessage, legacy lub plain), co pozwala ominąć autodetekcję.
+     */
     fun stringMessageToComponent(
         category: String,
         key: String,
@@ -274,6 +391,10 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Buduje [Component] bez doklejania prefiksu, co przydaje się w logach
+     * lub wiadomościach wewnętrznych.
+     */
     fun stringMessageToComponentNoPrefix(
         category: String,
         key: String,
@@ -290,6 +411,9 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Wariant [stringMessageToComponentNoPrefix] z wymuszeniem formatu źródłowego.
+     */
     fun stringMessageToComponentNoPrefix(
         category: String,
         key: String,
@@ -308,6 +432,10 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Zwraca wiadomość jako sformatowany String z prefiksem, zachowując
+     * oryginalny format (MiniMessage, legacy lub plain).
+     */
     fun stringMessageToString(
         category: String,
         key: String,
@@ -324,6 +452,9 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Wariant [stringMessageToString] z jawnym formatem źródłowym, który pomija autodetekcję.
+     */
     fun stringMessageToString(
         category: String,
         key: String,
@@ -342,6 +473,9 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Zwraca wiadomość jako String bez prefiksu, zachowując format źródłowy.
+     */
     fun stringMessageToStringNoPrefix(
         category: String,
         key: String,
@@ -358,6 +492,9 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Wariant [stringMessageToStringNoPrefix] z wymuszonym formatem źródłowym.
+     */
     fun stringMessageToStringNoPrefix(
         category: String,
         key: String,
@@ -376,6 +513,9 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Zwraca listę surowych wpisów tekstowych z konfiguracji (bez parsowania).
+     */
     fun getMessageStringList(category: String, key: String): List<String> {
         return yamlConfig.getStringList("$category.$key")
     }
@@ -485,10 +625,17 @@ class MessageHandler(
         return yamlConfig.getStringList("$category.$key")
     }
 
+    /**
+     * Konwertuje tekst w składni legacy (`&`) na [Component].
+     */
     fun formatLegacyText(message: String): Component {
         return LegacyComponentSerializer.legacyAmpersand().deserialize(message)
     }
 
+    /**
+     * Parsuje tekst zawierający mieszankę kodów `§` oraz notacji hex (`&#RRGGBB`)
+     * do komponentu Adventure.
+     */
     fun formatHexAndLegacyText(message: String): Component {
         val hexFormatted = message.replace("&#([a-fA-F0-9]{6})".toRegex()) {
             val hex = it.groupValues[1]
@@ -498,18 +645,33 @@ class MessageHandler(
         return LegacyComponentSerializer.legacySection().deserialize(hexFormatted)
     }
 
+    /**
+     * Bezpośrednio deserializuje podany tekst MiniMessage na [Component].
+     */
     fun miniMessageFormat(message: String): Component {
         return mM.deserialize(message)
     }
 
+    /**
+     * Serializuje komponent do formatu ANSI, przydatnego w konsoli.
+     */
     fun getANSIText(component: Component): String {
         return ANSIComponentSerializer.ansi().serialize(component)
     }
 
+    /**
+     * Zwraca czysty tekst z komponentu, ignorując formatowanie.
+     */
     fun getPlainText(component: Component): String {
         return PlainTextComponentSerializer.plainText().serialize(component)
     }
 
+    /**
+     * Konwertuje mieszane formaty legacy na MiniMessage, zachowując oryginalne tagi MiniMessage.
+     *
+     * @param message tekst zawierający potencjalne fragmenty MiniMessage i legacy.
+     * @param serializer serializer odpowiedzialny za interpretację kodów kolorów.
+     */
     private fun convertWithLegacySerializer(
         message: String,
         serializer: LegacyComponentSerializer
@@ -535,6 +697,9 @@ class MessageHandler(
         return result.toString()
     }
 
+    /**
+     * Zamienia kody `&` na składnię MiniMessage.
+     */
     private fun convertLegacyToMiniMessage(message: String): String {
         val serializer = LegacyComponentSerializer.legacyAmpersand()
             .toBuilder()
@@ -543,6 +708,9 @@ class MessageHandler(
         return convertWithLegacySerializer(message, serializer)
     }
 
+    /**
+     * Zamienia kody `§` na składnię MiniMessage.
+     */
     private fun convertSectionSignToMiniMessage(message: String): String {
         val serializer = LegacyComponentSerializer.legacySection()
             .toBuilder()
@@ -551,6 +719,9 @@ class MessageHandler(
         return convertWithLegacySerializer(message, serializer)
     }
 
+    /**
+     * Rozkodowuje sekwencje `\uXXXX` w tekście przed dalszym parsowaniem.
+     */
     private fun convertUnicodeEscapeSequences(input: String): String {
         return input.replace(Regex("""\\u([0-9A-Fa-f]{4})""")) { matchResult ->
             val codePoint = matchResult.groupValues[1].toInt(16)
@@ -558,10 +729,19 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Główne wejście do parsowania tekstu mieszanego na komponent MiniMessage.
+     *
+     * @param message treść wiadomości.
+     * @param resolver zestaw placeholderów MiniMessage.
+     */
     fun formatMixedTextToMiniMessage(message: String, resolver: TagResolver? = TagResolver.empty()): Component {
         return parseMixedMessage(message, resolver).component
     }
 
+    /**
+     * Wymusza parsowanie podanego tekstu w określonym [MessageFormat].
+     */
     fun formatTextToComponent(
         message: String,
         format: MessageFormat,
@@ -570,11 +750,21 @@ class MessageHandler(
         return parseMixedMessage(message, resolver, format).component
     }
 
+    /**
+     * Zwraca wynik parsowania w postaci tekstu legacy (`&`), niezależnie od wejścia.
+     *
+     * @param message treść wiadomości.
+     * @param resolver placeholdery MiniMessage przekazywane do parsera.
+     */
     fun formatMixedTextToLegacy(message: String, resolver: TagResolver? = TagResolver.empty()): String {
         val parsed = parseMixedMessage(message, resolver)
         return serializeComponent(parsed, MessageFormat.LEGACY_AMPERSAND)
     }
 
+    /**
+     * Parsuje wiadomość, wykrywa jej format (lub korzysta z [formatHint]) i zwraca
+     * zarówno komponent, jak i źródłowy format.
+     */
     private fun parseMixedMessage(
         message: String,
         resolver: TagResolver?,
@@ -591,6 +781,9 @@ class MessageHandler(
         return ParsedMessage(component, format)
     }
 
+    /**
+     * Deserializuje MiniMessage, opcjonalnie z resolverem placeholderów.
+     */
     private fun deserializeMiniMessage(message: String, resolver: TagResolver?): Component {
         return if (resolver != null) {
             mM.deserialize(message, resolver)
@@ -599,6 +792,9 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Na podstawie zawartości tekstu zgaduje format źródłowy (MiniMessage, legacy lub plain).
+     */
     private fun detectMessageFormat(message: String): MessageFormat {
         val hasMiniMessageTags = "<[^>]+>".toRegex().containsMatchIn(message)
         val hasSectionColors = "§[0-9a-fk-orA-FK-OR]".toRegex().containsMatchIn(message)
@@ -612,6 +808,9 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Serializuje [ParsedMessage] do formatu docelowego, domyślnie zachowując format źródłowy.
+     */
     private fun serializeComponent(parsedMessage: ParsedMessage, targetFormat: MessageFormat = parsedMessage.sourceFormat): String {
         return when (targetFormat) {
             MessageFormat.MINI_MESSAGE -> mM.serialize(parsedMessage.component)
@@ -631,11 +830,17 @@ class MessageHandler(
         }
     }
 
+    /**
+     * Struktura pomocnicza łącząca komponent z wykrytym formatem źródłowym.
+     */
     private data class ParsedMessage(
         val component: Component,
         val sourceFormat: MessageFormat
     )
 
+    /**
+     * Typy formatów wiadomości obsługiwane przez handler.
+     */
     enum class MessageFormat {
         MINI_MESSAGE,
         LEGACY_SECTION,

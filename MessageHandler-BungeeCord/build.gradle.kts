@@ -17,7 +17,7 @@ dependencies {
     compileOnly("net.kyori:adventure-text-minimessage:4.26.1")
     compileOnly("net.kyori:adventure-text-serializer-plain:4.26.1")
     compileOnly("net.kyori:adventure-text-serializer-ansi:4.26.1")
-    implementation("org.yaml:snakeyaml:2.3")
+    implementation("org.yaml:snakeyaml:2.5")
 }
 
 kotlin {
