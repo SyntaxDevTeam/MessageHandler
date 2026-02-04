@@ -32,8 +32,10 @@ class MessageHandler(
     private val meta: PluginMetaProvider,
     private val logger: MessageLogger = MessageLogger.NO_OP
 ) {
-    private val language = resources.getConfigValue("language", "EN").lowercase()
-    private val messagesFile = File(resources.dataFolder, "lang/messages_$language.yml")
+    @Volatile
+    private var language = resources.getConfigValue("language", "EN").lowercase()
+    @Volatile
+    private var messagesFile = File(resources.dataFolder, "lang/messages_$language.yml")
 
     private val componentCache: Cache<String, Component> =
         Caffeine.newBuilder()
@@ -79,6 +81,11 @@ class MessageHandler(
         */
     private fun loadYaml(): FileConfiguration =
         YamlConfiguration.loadConfiguration(messagesFile)
+
+    private fun refreshLanguageAndFile() {
+        language = resources.getConfigValue("language", "EN").lowercase()
+        messagesFile = File(resources.dataFolder, "lang/messages_$language.yml")
+    }
 
     /**
      * Loguje informację o autorze pliku językowego po pierwszym wczytaniu handlera.
@@ -253,6 +260,8 @@ class MessageHandler(
      * z najnowszych wartości.
      */
     fun reloadMessages() {
+        refreshLanguageAndFile()
+        copyDefaultAndSync()
         yamlConfig = loadYaml()
         prefix = yamlConfig.getString("prefix") ?: "[${meta.name}]"
         componentCache.invalidateAll()
