@@ -36,8 +36,10 @@ class MessageHandler(
     private val meta: PluginMetaProvider,
     private val logger: MessageLogger = MessageLogger.NO_OP
 ) {
-    private val language = resources.getConfigValue("language", "EN").lowercase()
-    private val messagesFile = File(resources.dataFolder, "lang/messages_$language.yml")
+    @Volatile
+    private var language = resources.getConfigValue("language", "EN").lowercase()
+    @Volatile
+    private var messagesFile = File(resources.dataFolder, "lang/messages_$language.yml")
 
     private val componentCache: Cache<String, Component> =
         Caffeine.newBuilder()
@@ -92,6 +94,11 @@ class MessageHandler(
         */
     private fun loadYaml(): MutableMap<String, Any?> =
         loadYamlFromFile(messagesFile)
+
+    private fun refreshLanguageAndFile() {
+        language = resources.getConfigValue("language", "EN").lowercase()
+        messagesFile = File(resources.dataFolder, "lang/messages_$language.yml")
+    }
 
     /**
      * Ładuje dane YAML z pliku, zwracając mutowalną mapę do dalszego przetwarzania.
@@ -287,6 +294,8 @@ class MessageHandler(
      * z najnowszych wartości.
      */
     fun reloadMessages() {
+        refreshLanguageAndFile()
+        copyDefaultAndSync()
         yamlConfig = loadYaml()
         prefix = yamlConfig.string("prefix") ?: "[${meta.name}]"
         componentCache.invalidateAll()
