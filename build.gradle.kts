@@ -1,10 +1,11 @@
 plugins {
     kotlin("jvm") version "2.3.0" apply false
-    id("com.gradleup.shadow") version "9.3.0" apply false
+    id("com.gradleup.shadow") version "9.3.1" apply false
+    id("org.jetbrains.dokka-javadoc") version "2.1.0" apply false
 }
 
 group = "pl.syntaxdevteam"
-version = "1.1.0-R0.1-SNAPSHOT"
+version = "1.1.0-R0.2-SNAPSHOT"
 
 tasks.wrapper {
     distributionType = Wrapper.DistributionType.BIN
@@ -32,4 +33,25 @@ subprojects {
     apply(plugin = "org.jetbrains.kotlin.jvm")
     apply(plugin = "com.gradleup.shadow")
     apply(plugin = "maven-publish")
+    apply(plugin = "org.jetbrains.dokka-javadoc")
+
+    val javadocOutputDir = layout.buildDirectory.dir("dokka/javadoc")
+    extensions.configure<org.jetbrains.dokka.gradle.DokkaExtension> {
+        dokkaPublications.named("javadoc") {
+            outputDirectory.set(javadocOutputDir)
+        }
+    }
+
+    val dokkaJavadoc by tasks.named("dokkaGeneratePublicationJavadoc")
+    val javadocJar by tasks.registering(Jar::class) {
+        archiveClassifier.set("javadoc")
+        dependsOn(dokkaJavadoc)
+        from(javadocOutputDir)
+    }
+
+    extensions.configure<PublishingExtension> {
+        publications.withType<MavenPublication>().configureEach {
+            artifact(javadocJar)
+        }
+    }
 }

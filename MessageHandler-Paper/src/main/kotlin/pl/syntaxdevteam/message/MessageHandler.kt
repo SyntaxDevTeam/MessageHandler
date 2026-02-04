@@ -202,12 +202,13 @@ class MessageHandler(
             if (backupDirectory.exists()) {
                 backupDirectory.deleteRecursively()
             }
-
+/*
             if (langDirectory.renameTo(backupDirectory)) {
                 logger.success("Detected outdated language files (version below 2.0.0). Backed up current lang directory to lang_old_ver.")
             } else {
                 logger.err("Failed to backup outdated language directory to lang_old_ver.")
             }
+*/
         }
 
         if (!targetFile.exists()) {
