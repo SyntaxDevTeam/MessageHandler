@@ -23,14 +23,14 @@ repositories {
 }
 
 dependencies {
-    // Paper/Folia
-    implementation("pl.syntaxdevteam:messageHandler-paper:1.1.0-SNAPSHOT")
+    // Paper/Purpur/Folia
+    implementation("pl.syntaxdevteam:messageHandler-paper:1.1.1-R0.1SNAPSHOT")
     // lub Spigot/Bukkit
-    // implementation("pl.syntaxdevteam:messageHandler-spigot:1.1.0-SNAPSHOT")
+    // implementation("pl.syntaxdevteam:messageHandler-spigot:1.1.1-R0.1-SNAPSHOT")
     // lub BungeeCord
-    // implementation("pl.syntaxdevteam:messageHandler-bungeecord:1.1.0-SNAPSHOT")
+    // implementation("pl.syntaxdevteam:messageHandler-bungeecord:1.1.1-R0.1-SNAPSHOT")
     // lub Velocity
-    // implementation("pl.syntaxdevteam:messageHandler-velocity:1.1.0-SNAPSHOT")
+    // implementation("pl.syntaxdevteam:messageHandler-velocity:1.1.1-R0.1-SNAPSHOT")
     compileOnly("com.github.ben-manes.caffeine:caffeine:${latestVersion}")
     compileOnly("net.kyori:adventure-text-serializer-legacy:${latestVersion}")
     compileOnly("net.kyori:adventure-text-minimessage:${latestVersion}")
