@@ -681,7 +681,7 @@ class MessageHandler(
      * @param message tekst zawierający potencjalne fragmenty MiniMessage i legacy.
      * @param serializer serializer odpowiedzialny za interpretację kodów kolorów.
      */
-    private fun convertWithLegacySerializer(
+    fun convertWithLegacySerializer(
         message: String,
         serializer: LegacyComponentSerializer
     ): String {
@@ -709,7 +709,7 @@ class MessageHandler(
     /**
      * Zamienia kody `&` na składnię MiniMessage.
      */
-    private fun convertLegacyToMiniMessage(message: String): String {
+    fun convertLegacyToMiniMessage(message: String): String {
         val serializer = LegacyComponentSerializer.legacyAmpersand()
             .toBuilder()
             .hexColors()
@@ -718,9 +718,22 @@ class MessageHandler(
     }
 
     /**
+     * Serializuje format dla Bukkit
+     */
+
+    fun legacySerializer(message: String): String {
+        val component = Component.text(message)
+        return LegacyComponentSerializer.legacySection().serialize(component)
+    }
+
+    fun legacyComponentSerializer(message: Component): String {
+        return LegacyComponentSerializer.legacySection().serialize(message)
+    }
+
+    /**
      * Zamienia kody `§` na składnię MiniMessage.
      */
-    private fun convertSectionSignToMiniMessage(message: String): String {
+    fun convertSectionSignToMiniMessage(message: String): String {
         val serializer = LegacyComponentSerializer.legacySection()
             .toBuilder()
             .hexColors()
@@ -731,7 +744,7 @@ class MessageHandler(
     /**
      * Rozkodowuje sekwencje `\uXXXX` w tekście przed dalszym parsowaniem.
      */
-    private fun convertUnicodeEscapeSequences(input: String): String {
+    fun convertUnicodeEscapeSequences(input: String): String {
         return input.replace(Regex("""\\u([0-9A-Fa-f]{4})""")) { matchResult ->
             val codePoint = matchResult.groupValues[1].toInt(16)
             String(Character.toChars(codePoint))

@@ -742,6 +742,23 @@ class MessageHandler(
     }
 
     /**
+     * Serializuje tekst do legacy section (`§`) w celu zachowania zgodności API
+     * z implementacją Spigot.
+     */
+    fun legacySerializer(message: String): String {
+        val component = Component.text(message)
+        return LegacyComponentSerializer.legacySection().serialize(component)
+    }
+
+    /**
+     * Serializuje [Component] do legacy section (`§`) w celu zachowania zgodności API
+     * z implementacją Spigot.
+     */
+    fun legacyComponentSerializer(message: Component): String {
+        return LegacyComponentSerializer.legacySection().serialize(message)
+    }
+
+    /**
      * Zamienia kody `§` na składnię MiniMessage.
      */
     private fun convertSectionSignToMiniMessage(message: String): String {
