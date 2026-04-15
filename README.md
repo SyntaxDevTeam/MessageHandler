@@ -69,6 +69,15 @@ class TwojPLuginX : JavaPlugin() {
  * `stringMessageToStringNoPrefix(category, key, placeholders)` – tak jak powyższa metoda ale ta zwraca treść wiadomości jako „czysty” String **bez prefiksu**, ale po przetworzeniu MiniMessage.
    <img width="713" height="28" alt="image" src="https://github.com/user-attachments/assets/8225a929-37d5-49af-862f-135d3ab03700" />
 
+ * `stringMessageToComponentForLocale(locale, category, key, placeholders)` – wariant API przygotowany pod dobór pliku językowego zależnie od locale klienta (np. `en_us`), bez zmiany globalnego `language` z configu.
+ * `stringMessageToStringForLocale(locale, category, key, placeholders)` – jak wyżej, ale zwraca String.
+ * `getSmartMessageForLocale(locale, category, key, placeholders)` – locale-aware odpowiednik `getSmartMessage`, działający dla wpisu pojedynczego i listy.
+
+   **Kolejność fallback dla API locale-aware:**
+   1. `messages_<locale>.yml` (np. `messages_en_us.yml`)
+   2. `messages_<language>.yml` (np. `messages_en.yml`)
+   3. plik bazowy wynikający z `language` w configu (tryb zgodny wstecznie)
+
  * `stringMessageToComponentNoPrefix(category, key, placeholders)` – generuje komponent przeznaczony nie tylko do logów ale napisany z myślą o nich, konwertując zapis legacy/section na MiniMessage i pomijając prefiks.
    <img width="449" height="27" alt="image" src="https://github.com/user-attachments/assets/554ea0c8-044d-4f6b-861a-5efa0e7e7bfc" />
 

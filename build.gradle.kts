@@ -1,11 +1,11 @@
 plugins {
-    kotlin("jvm") version "2.3.20" apply false
-    id("com.gradleup.shadow") version "9.4.0" apply false
+    kotlin("jvm") version "2.4.0-Beta1" apply false
+    id("com.gradleup.shadow") version "9.4.1" apply false
     id("org.jetbrains.dokka-javadoc") version "2.2.0" apply false
 }
 
 group = "pl.syntaxdevteam"
-version = "1.1.2-R0.1-SNAPSHOT"
+version = "1.2.0-R0.1-SNAPSHOT"
 
 tasks.wrapper {
     distributionType = Wrapper.DistributionType.BIN
