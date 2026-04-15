@@ -72,6 +72,7 @@ class TwojPLuginX : JavaPlugin() {
  * `stringMessageToComponentForLocale(locale, category, key, placeholders)` – wariant API przygotowany pod dobór pliku językowego zależnie od locale klienta (np. `en_us`), bez zmiany globalnego `language` z configu.
  * `stringMessageToStringForLocale(locale, category, key, placeholders)` – jak wyżej, ale zwraca String.
  * `getSmartMessageForLocale(locale, category, key, placeholders)` – locale-aware odpowiednik `getSmartMessage`, działający dla wpisu pojedynczego i listy.
+   > Aktualnie zaimplementowane w modułach: **MessageHandler-Paper** i **MessageHandler-Spigot**.
 
    **Kolejność fallback dla API locale-aware:**
    1. `messages_<locale>.yml` (np. `messages_en_us.yml`)
