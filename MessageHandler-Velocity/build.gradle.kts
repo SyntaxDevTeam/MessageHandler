@@ -12,11 +12,11 @@ repositories {
 
 dependencies {
     compileOnly("com.velocitypowered:velocity-api:3.5.0-SNAPSHOT")
-    compileOnly("com.github.ben-manes.caffeine:caffeine:3.2.3")
-    compileOnly("net.kyori:adventure-text-serializer-legacy:4.26.1")
-    compileOnly("net.kyori:adventure-text-minimessage:4.26.1")
-    compileOnly("net.kyori:adventure-text-serializer-plain:4.26.1")
-    compileOnly("net.kyori:adventure-text-serializer-ansi:4.26.1")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
+    implementation("net.kyori:adventure-text-serializer-legacy:5.0.0")
+    implementation("net.kyori:adventure-text-minimessage:5.0.0")
+    implementation("net.kyori:adventure-text-serializer-plain:5.0.0")
+    implementation("net.kyori:adventure-text-serializer-ansi:5.0.0")
     implementation("org.yaml:snakeyaml:2.6")
 }
 

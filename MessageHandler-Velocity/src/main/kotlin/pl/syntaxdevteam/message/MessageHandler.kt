@@ -16,6 +16,7 @@ import java.io.File
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.util.LinkedHashMap
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 @Suppress("unused")
@@ -61,6 +62,11 @@ class MessageHandler(
     private val complexCache: Cache<String, List<Component>> =
         Caffeine.newBuilder()
             .maximumSize(500)
+            .expireAfterAccess(10, TimeUnit.MINUTES)
+            .build()
+    private val localeConfigCache: Cache<String, MutableMap<String, Any?>> =
+        Caffeine.newBuilder()
+            .maximumSize(32)
             .expireAfterAccess(10, TimeUnit.MINUTES)
             .build()
     private val mM = MiniMessage.miniMessage()
@@ -310,6 +316,7 @@ class MessageHandler(
         simpleCache.invalidateAll()
         cleanCache.invalidateAll()
         complexCache.invalidateAll()
+        localeConfigCache.invalidateAll()
     }
 
     /**
@@ -365,6 +372,38 @@ class MessageHandler(
         }
     }
 
+    private fun normalizeLocale(locale: String?): String? {
+        if (locale.isNullOrBlank()) return null
+        return locale.lowercase(Locale.ROOT).replace('-', '_')
+    }
+
+    private fun localeCandidates(locale: String?): List<String> {
+        val normalized = normalizeLocale(locale) ?: return emptyList()
+        val languageOnly = normalized.substringBefore('_')
+        return if (languageOnly == normalized) {
+            listOf(normalized)
+        } else {
+            listOf(normalized, languageOnly)
+        }
+    }
+
+    private fun loadLocaleConfig(locale: String?): MutableMap<String, Any?> {
+        val candidates = localeCandidates(locale)
+        for (candidate in candidates) {
+            val file = File(resources.dataFolder, "lang/messages_$candidate.yml")
+            if (file.exists()) {
+                return localeConfigCache.get(candidate) {
+                    loadYamlFromFile(file)
+                }
+            }
+        }
+        return yamlConfig
+    }
+
+    private fun getPrefixForConfig(config: Map<String, Any?>): String {
+        return config.string("prefix") ?: prefix
+    }
+
     /**
      * Wspólna ścieżka obsługi cache dla wszystkich wariantów zwracających wiadomości.
      *
@@ -398,6 +437,35 @@ class MessageHandler(
         }
     }
 
+    private fun <T> cacheLocalizedMessage(
+        locale: String?,
+        category: String,
+        key: String,
+        placeholders: Map<String, String>,
+        cache: Cache<String, T>,
+        cacheKeyPrefix: String = "",
+        formatHint: MessageFormat? = null,
+        transform: (raw: String, resolver: TagResolver, selectedConfig: Map<String, Any?>) -> T
+    ): T {
+        val normalizedLocale = normalizeLocale(locale)
+        val localeCachePart = normalizedLocale ?: "global"
+        val cacheKey = buildString {
+            append("locale:").append(localeCachePart).append('|')
+            append(cacheKeyPrefix)
+            formatHint?.let { append("format:").append(it.name).append('|') }
+            append(composeKey(category, key, placeholders))
+        }
+        val resolver = createResolver(placeholders)
+        return cache.get(cacheKey) {
+            val selectedConfig = loadLocaleConfig(normalizedLocale)
+            val path = "$category.$key"
+            val raw = selectedConfig.string(path)
+                ?: yamlConfig.string(path)
+                ?: errorLogAndDefault(category, key)
+            transform(raw, resolver, selectedConfig)
+        }
+    }
+
     /**
      * Zwraca wiadomość jako [Component] z automatycznie dodanym prefiksem.
      *
@@ -416,6 +484,30 @@ class MessageHandler(
             componentCache
         ) { raw, resolver ->
             val full = "$prefix $raw"
+            parseMixedMessage(full, resolver).component
+        }
+    }
+
+    /**
+     * Wariant [stringMessageToComponent] z wyborem języka na podstawie locale klienta.
+     *
+     * Gdy locale nie jest jeszcze dostępne (np. bardzo wczesny etap połączenia),
+     * metoda bezpiecznie przechodzi na globalny plik językowy.
+     */
+    fun stringMessageToComponentForLocale(
+        locale: String?,
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): Component {
+        return cacheLocalizedMessage(
+            locale = locale,
+            category = category,
+            key = key,
+            placeholders = placeholders,
+            cache = componentCache
+        ) { raw, resolver, selectedConfig ->
+            val full = "${getPrefixForConfig(selectedConfig)} $raw"
             parseMixedMessage(full, resolver).component
         }
     }
@@ -499,6 +591,29 @@ class MessageHandler(
             simpleCache
         ) { raw, resolver ->
             val parsed = parseMixedMessage("$prefix $raw", resolver)
+            serializeComponent(parsed)
+        }
+    }
+
+    /**
+     * Wariant [stringMessageToString] z wyborem języka na podstawie locale klienta.
+     *
+     * Gdy locale jest niedostępne, używany jest globalny język z configu.
+     */
+    fun stringMessageToStringForLocale(
+        locale: String?,
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): String {
+        return cacheLocalizedMessage(
+            locale = locale,
+            category = category,
+            key = key,
+            placeholders = placeholders,
+            cache = simpleCache
+        ) { raw, resolver, selectedConfig ->
+            val parsed = parseMixedMessage("${getPrefixForConfig(selectedConfig)} $raw", resolver)
             serializeComponent(parsed)
         }
     }
@@ -641,6 +756,46 @@ class MessageHandler(
                 }
                 else -> {
                     logger.err("There was an error loading the smart message $key from category $category")
+                    listOf(Component.text("Message not found. Check console..."))
+                }
+            }
+        }
+    }
+
+    /**
+     * Wariant [getSmartMessage] z wyborem języka na podstawie locale klienta.
+     *
+     * Działa także dla `null` locale (fallback do globalnego pliku).
+     */
+    fun getSmartMessageForLocale(
+        locale: String?,
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): List<Component> {
+        val normalizedLocale = normalizeLocale(locale)
+        val localeCachePart = normalizedLocale ?: "global"
+        val cacheKey = "locale:$localeCachePart|" + composeKey("smart.$category", key, placeholders)
+        val resolver = createResolver(placeholders)
+
+        return complexCache.get(cacheKey) {
+            val selectedConfig = loadLocaleConfig(normalizedLocale)
+            val selectedPrefix = getPrefixForConfig(selectedConfig)
+            val path = "$category.$key"
+
+            when (val rawValue = selectedConfig.path(path) ?: yamlConfig.path(path)) {
+                is String -> {
+                    listOf(
+                        formatMixedTextToMiniMessage("$selectedPrefix $rawValue", resolver)
+                    )
+                }
+                is List<*> -> {
+                    rawValue.filterIsInstance<String>().map { line ->
+                        formatMixedTextToMiniMessage(line, resolver)
+                    }
+                }
+                else -> {
+                    logger.err("There was an error loading localized smart message $key from category $category for locale $localeCachePart")
                     listOf(Component.text("Message not found. Check console..."))
                 }
             }

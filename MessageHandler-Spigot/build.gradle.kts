@@ -15,11 +15,25 @@ repositories {
 
 dependencies {
     compileOnly("org.spigotmc:spigot-api:26.1-R0.1-SNAPSHOT")
-    compileOnly("com.github.ben-manes.caffeine:caffeine:3.2.3")
-    compileOnly("net.kyori:adventure-text-serializer-legacy:4.26.1")
-    compileOnly("net.kyori:adventure-text-minimessage:4.26.1")
-    compileOnly("net.kyori:adventure-text-serializer-plain:4.26.1")
-    compileOnly("net.kyori:adventure-text-serializer-ansi:4.26.1")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
+    implementation("net.kyori:adventure-text-serializer-legacy:5.0.0")
+    implementation("net.kyori:adventure-text-minimessage:5.0.0")
+    implementation("net.kyori:adventure-text-serializer-plain:5.0.0")
+    implementation("net.kyori:adventure-text-serializer-ansi:5.0.0")
+    implementation("net.kyori:adventure-api:5.0.0")
+    implementation("net.kyori:adventure-key:5.0.0")
+    implementation("net.kyori:adventure-platform-api:4.4.1")
+    implementation("net.kyori:adventure-platform-bukkit:4.4.1")
+    implementation("net.kyori:adventure-platform-facet:4.4.1")
+    implementation("net.kyori:adventure-text-minimessage:5.0.0")
+    implementation("net.kyori:adventure-text-serializer-json:5.0.0")
+    implementation("net.kyori:adventure-text-serializer-gson:5.0.0")
+    implementation("net.kyori:adventure-text-serializer-legacy:5.0.0")
+    implementation("net.kyori:adventure-text-serializer-plain:5.0.0")
+    implementation("net.kyori:adventure-text-serializer-ansi:5.0.0")
+    implementation("net.kyori:examination-api:1.3.0")
+    implementation("net.kyori:examination-string:1.3.0")
+    implementation("net.kyori:option:1.1.0")
 }
 
 kotlin {
