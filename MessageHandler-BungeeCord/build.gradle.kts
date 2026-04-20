@@ -17,6 +17,7 @@ dependencies {
     implementation("net.kyori:adventure-text-minimessage:5.0.0")
     implementation("net.kyori:adventure-text-serializer-plain:5.0.0")
     implementation("net.kyori:adventure-text-serializer-ansi:5.0.0")
+    implementation("net.kyori:adventure-nbt:5.0.0")
     implementation("org.yaml:snakeyaml:2.6")
 }
 

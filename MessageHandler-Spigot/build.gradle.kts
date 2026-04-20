@@ -20,6 +20,7 @@ dependencies {
     implementation("net.kyori:adventure-text-minimessage:5.0.0")
     implementation("net.kyori:adventure-text-serializer-plain:5.0.0")
     implementation("net.kyori:adventure-text-serializer-ansi:5.0.0")
+    implementation("net.kyori:adventure-nbt:5.0.0")
     implementation("net.kyori:adventure-api:5.0.0")
     implementation("net.kyori:adventure-key:5.0.0")
     implementation("net.kyori:adventure-platform-api:4.4.1")
