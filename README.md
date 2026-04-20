@@ -24,18 +24,13 @@ repositories {
 
 dependencies {
     // Paper/Purpur/Folia
-    implementation("pl.syntaxdevteam:messageHandler-paper:1.1.1-R0.1SNAPSHOT")
+    implementation("pl.syntaxdevteam:messageHandler-paper:1.2.0-R0.2SNAPSHOT")
     // lub Spigot/Bukkit
-    // implementation("pl.syntaxdevteam:messageHandler-spigot:1.1.1-R0.1-SNAPSHOT")
+    // implementation("pl.syntaxdevteam:messageHandler-spigot:1.2.0-R0.2-SNAPSHOT")
     // lub BungeeCord
-    // implementation("pl.syntaxdevteam:messageHandler-bungeecord:1.1.1-R0.1-SNAPSHOT")
+    // implementation("pl.syntaxdevteam:messageHandler-bungeecord:1.2.0-R0.2-SNAPSHOT")
     // lub Velocity
-    // implementation("pl.syntaxdevteam:messageHandler-velocity:1.1.1-R0.1-SNAPSHOT")
-    compileOnly("com.github.ben-manes.caffeine:caffeine:${latestVersion}")
-    compileOnly("net.kyori:adventure-text-serializer-legacy:${latestVersion}")
-    compileOnly("net.kyori:adventure-text-minimessage:${latestVersion}")
-    compileOnly("net.kyori:adventure-text-serializer-plain:${latestVersion}")
-    compileOnly("net.kyori:adventure-text-serializer-ansi:${latestVersion}")
+    // implementation("pl.syntaxdevteam:messageHandler-velocity:1.2.0-R0.2-SNAPSHOT")
 }
 ```
 W klasie głównej dodaj:
