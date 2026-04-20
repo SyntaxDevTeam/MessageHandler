@@ -24,7 +24,7 @@ repositories {
 
 dependencies {
     // Paper/Purpur/Folia
-    implementation("pl.syntaxdevteam:messageHandler-paper:1.2.0-R0.2SNAPSHOT")
+    implementation("pl.syntaxdevteam:messageHandler-paper:1.2.0-R0.2-SNAPSHOT")
     // lub Spigot/Bukkit
     // implementation("pl.syntaxdevteam:messageHandler-spigot:1.2.0-R0.2-SNAPSHOT")
     // lub BungeeCord
