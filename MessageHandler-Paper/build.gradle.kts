@@ -15,12 +15,12 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
-    implementation("net.kyori:adventure-text-serializer-legacy:5.0.1")
-    implementation("net.kyori:adventure-text-minimessage:5.0.1")
-    implementation("net.kyori:adventure-text-serializer-plain:5.0.1")
-    implementation("net.kyori:adventure-text-serializer-ansi:5.0.1")
-    implementation("net.kyori:adventure-nbt:5.0.1")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.4")
+    implementation("net.kyori:adventure-text-serializer-legacy:5.1.1")
+    implementation("net.kyori:adventure-text-minimessage:5.1.1")
+    implementation("net.kyori:adventure-text-serializer-plain:5.1.1")
+    implementation("net.kyori:adventure-text-serializer-ansi:5.1.1")
+    implementation("net.kyori:adventure-nbt:5.1.1")
 }
 
 kotlin {

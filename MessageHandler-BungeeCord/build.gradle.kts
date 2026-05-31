@@ -12,12 +12,12 @@ repositories {
 
 dependencies {
     compileOnly("net.md-5:bungeecord-api:26.1-R0.1-SNAPSHOT")
-    implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
-    implementation("net.kyori:adventure-text-serializer-legacy:5.0.1")
-    implementation("net.kyori:adventure-text-minimessage:5.0.1")
-    implementation("net.kyori:adventure-text-serializer-plain:5.0.1")
-    implementation("net.kyori:adventure-text-serializer-ansi:5.0.1")
-    implementation("net.kyori:adventure-nbt:5.0.1")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.4")
+    implementation("net.kyori:adventure-text-serializer-legacy:5.1.1")
+    implementation("net.kyori:adventure-text-minimessage:5.1.1")
+    implementation("net.kyori:adventure-text-serializer-plain:5.1.1")
+    implementation("net.kyori:adventure-text-serializer-ansi:5.1.1")
+    implementation("net.kyori:adventure-nbt:5.1.1")
     implementation("org.yaml:snakeyaml:2.6")
 }
 
