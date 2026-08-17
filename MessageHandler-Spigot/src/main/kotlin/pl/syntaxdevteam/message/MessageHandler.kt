@@ -861,10 +861,7 @@ class MessageHandler(
      * Zamienia kody `&` na składnię MiniMessage.
      */
     fun convertLegacyToMiniMessage(message: String): String {
-        val serializer = LegacyComponentSerializer.legacyAmpersand()
-            .toBuilder()
-            .hexColors()
-            .build()
+        val serializer = legacySerializerWithHex('&')
         return convertWithLegacySerializer(message, serializer)
     }
 
@@ -885,11 +882,15 @@ class MessageHandler(
      * Zamienia kody `§` na składnię MiniMessage.
      */
     fun convertSectionSignToMiniMessage(message: String): String {
-        val serializer = LegacyComponentSerializer.legacySection()
-            .toBuilder()
+        val serializer = legacySerializerWithHex('§')
+        return convertWithLegacySerializer(message, serializer)
+    }
+
+    private fun legacySerializerWithHex(character: Char): LegacyComponentSerializer {
+        return LegacyComponentSerializer.builder()
+            .character(character)
             .hexColors()
             .build()
-        return convertWithLegacySerializer(message, serializer)
     }
 
     /**
@@ -987,18 +988,8 @@ class MessageHandler(
     private fun serializeComponent(parsedMessage: ParsedMessage, targetFormat: MessageFormat = parsedMessage.sourceFormat): String {
         return when (targetFormat) {
             MessageFormat.MINI_MESSAGE -> mM.serialize(parsedMessage.component)
-            MessageFormat.LEGACY_SECTION -> LegacyComponentSerializer
-                .legacySection()
-                .toBuilder()
-                .hexColors()
-                .build()
-                .serialize(parsedMessage.component)
-            MessageFormat.LEGACY_AMPERSAND -> LegacyComponentSerializer
-                .legacyAmpersand()
-                .toBuilder()
-                .hexColors()
-                .build()
-                .serialize(parsedMessage.component)
+            MessageFormat.LEGACY_SECTION -> legacySerializerWithHex('§').serialize(parsedMessage.component)
+            MessageFormat.LEGACY_AMPERSAND -> legacySerializerWithHex('&').serialize(parsedMessage.component)
             MessageFormat.PLAIN -> getPlainText(parsedMessage.component)
         }
     }
