@@ -11,7 +11,7 @@ Autorska biblioteka do kompleksowej obsługi wiadomości i plików językowych d
 ## Jak dodać?
 Dodaj do build.gradle.kts odpowiednią wersję:  
 ### Paper/Spigot
-* Release: ![Latest Release](https://img.shields.io/maven-metadata/v?metadataUrl=https://nexus.syntaxdevteam.pl/repository/maven-releases/pl/syntaxdevteam/messageHandler-paper/maven-metadata.xml)
+<!--  * Release: ![Latest Release](https://img.shields.io/maven-metadata/v?metadataUrl=https://nexus.syntaxdevteam.pl/repository/maven-releases/pl/syntaxdevteam/messageHandler-paper/maven-metadata.xml) //-->
 
 * Snapshot: ![Latest Snapshot](https://img.shields.io/maven-metadata/v?metadataUrl=https://nexus.syntaxdevteam.pl/repository/maven-snapshots/pl/syntaxdevteam/messageHandler-paper/maven-metadata.xml)
 
