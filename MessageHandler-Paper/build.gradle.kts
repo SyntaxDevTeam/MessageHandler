@@ -15,7 +15,7 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    compileOnly("com.github.ben-manes.caffeine:caffeine:3.2.4")
+    compileOnly("com.github.ben-manes.caffeine:caffeine:3.3.0")
     compileOnly("net.kyori:adventure-text-serializer-legacy:5.2.0")
     compileOnly("net.kyori:adventure-text-minimessage:5.2.0")
     compileOnly("net.kyori:adventure-text-serializer-plain:5.2.0")
