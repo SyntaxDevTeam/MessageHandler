@@ -78,6 +78,34 @@ class TwojPLuginX : JavaPlugin() {
    - locale gracza może być chwilowo niedostępne na bardzo wczesnym etapie połączenia,
    - API `...ForLocale(...)` przyjmuje także `null` locale i wtedy zawsze używa globalnego fallbacku (punkt 3).
 
+### Automatyczny język gracza
+
+Ustaw tryb automatyczny oraz język zapasowy w konfiguracji pluginu korzystającego z biblioteki:
+
+```yaml
+language: auto
+fallback-language: EN
+```
+
+Następnie przekaż gracza do przeciążonej metody:
+
+```kotlin
+player.sendMessage(
+    messageHandler.stringMessageToComponent(player, "messages", "welcome")
+)
+```
+
+Dostępne są także `stringMessageToString(player, ...)` i `getSmartMessage(player, ...)`.
+Biblioteka odczyta locale wysłane przez klienta Minecraft i spróbuje kolejno pliku dla pełnego
+locale oraz języka, np. dla `pl_PL`: `messages_pl_pl.yml`, potem `messages_pl.yml`.
+Jeśli żaden z nich nie istnieje albo locale nie jest jeszcze dostępne, użyje
+`messages_en.yml` wskazanego przez `fallback-language`. Pliki dostępne do automatycznego
+wyboru należy umieścić w katalogu `lang` pluginu. Przy ustawieniu `language: PL`, `EN`, `DE`
+itp. nowe przeciążenia zachowują dotychczasowy, globalny wybór języka.
+
+> Metody bez parametru gracza nie mogą rozpoznać odbiorcy i w trybie `auto` korzystają z
+> `fallback-language`. Dla konsoli jest to oczekiwane zachowanie.
+
  * `stringMessageToComponentNoPrefix(category, key, placeholders)` – generuje komponent przeznaczony nie tylko do logów ale napisany z myślą o nich, konwertując zapis legacy/section na MiniMessage i pomijając prefiks.
    <img width="449" height="27" alt="image" src="https://github.com/user-attachments/assets/554ea0c8-044d-4f6b-861a-5efa0e7e7bfc" />
 

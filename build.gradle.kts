@@ -1,11 +1,11 @@
 plugins {
-    kotlin("jvm") version "2.4.0" apply false
-    id("com.gradleup.shadow") version "9.4.3" apply false
+    kotlin("jvm") version "2.4.20" apply false
+    id("com.gradleup.shadow") version "9.6.1" apply false
     id("org.jetbrains.dokka-javadoc") version "2.2.0" apply false
 }
 
 group = "pl.syntaxdevteam"
-version = "1.2.2-R0.4-SNAPSHOT"
+version = "1.3.0-R0.1-SNAPSHOT"
 
 tasks.wrapper {
     distributionType = Wrapper.DistributionType.BIN
@@ -35,6 +35,12 @@ subprojects {
     apply(plugin = "maven-publish")
     apply(plugin = "org.jetbrains.dokka-javadoc")
 
+    tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>().configureEach {
+        // Transformery Shadow muszą otrzymać wszystkie duplikaty (m.in. *.kotlin_module),
+        // zanim scalą je do pojedynczego wpisu w wynikowym JAR-ze.
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
+
     val javadocOutputDir = layout.buildDirectory.dir("dokka/javadoc")
     extensions.configure<org.jetbrains.dokka.gradle.DokkaExtension> {
         dokkaPublications.named("javadoc") {
@@ -42,8 +48,8 @@ subprojects {
         }
     }
 
-    val dokkaJavadoc by tasks.named("dokkaGeneratePublicationJavadoc")
-    val javadocJar by tasks.registering(Jar::class) {
+    val dokkaJavadoc = tasks.named("dokkaGeneratePublicationJavadoc")
+    val javadocJar = tasks.register<Jar>("javadocJar") {
         archiveClassifier.set("javadoc")
         dependsOn(dokkaJavadoc)
         from(javadocOutputDir)

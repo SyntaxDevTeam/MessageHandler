@@ -12,6 +12,7 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
+import org.bukkit.entity.Player
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -34,7 +35,9 @@ class MessageHandler(
     private val logger: MessageLogger = MessageLogger.NO_OP
 ) {
     @Volatile
-    private var language = resources.getConfigValue("language", "EN").lowercase()
+    private var automaticLanguage = resources.getConfigValue("language", "EN").trim().equals("auto", ignoreCase = true)
+    @Volatile
+    private var language = configuredFallbackLanguage()
     @Volatile
     private var messagesFile = File(resources.dataFolder, "lang/messages_$language.yml")
 
@@ -89,8 +92,20 @@ class MessageHandler(
     private fun loadYaml(): FileConfiguration =
         YamlConfiguration.loadConfiguration(messagesFile)
 
+    private fun configuredFallbackLanguage(): String {
+        val configured = resources.getConfigValue("language", "EN").trim().lowercase(Locale.ROOT)
+        if (configured != "auto") return configured
+
+        return resources.getConfigValue("fallback-language", "EN")
+            .trim()
+            .lowercase(Locale.ROOT)
+            .takeUnless { it.isBlank() || it == "auto" }
+            ?: "en"
+    }
+
     private fun refreshLanguageAndFile() {
-        language = resources.getConfigValue("language", "EN").lowercase()
+        automaticLanguage = resources.getConfigValue("language", "EN").trim().equals("auto", ignoreCase = true)
+        language = configuredFallbackLanguage()
         messagesFile = File(resources.dataFolder, "lang/messages_$language.yml")
     }
 
@@ -103,7 +118,12 @@ class MessageHandler(
      */
     fun initial() {
         val author = getAuthorFromYamlComment() ?: "SyntaxDevTeam"
-        logger.success("<gray>Loaded \"$language\" language file by: <white><b>$author</b></white>")
+        val loadedLanguage = if (automaticLanguage) {
+            "\"auto\" language mode with \"$language\" fallback file"
+        } else {
+            "\"$language\" language file"
+        }
+        logger.success("<gray>Loaded $loadedLanguage by: <white><b>$author</b></white>")
     }
 
     /**
@@ -472,6 +492,21 @@ class MessageHandler(
     }
 
     /**
+     * Pobiera wiadomość w języku klienta [player], gdy `language: auto`.
+     * Dla jawnie ustawionego języka zachowuje dotychczasowe, globalne działanie.
+     */
+    fun stringMessageToComponent(
+        player: Player,
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): Component = if (automaticLanguage) {
+        stringMessageToComponentForLocale(player.locale, category, key, placeholders)
+    } else {
+        stringMessageToComponent(category, key, placeholders)
+    }
+
+    /**
      * Jak [stringMessageToComponent], ale z narzuconym formatem źródłowym
      * (MiniMessage, legacy lub plain), co pozwala ominąć autodetekcję.
      */
@@ -575,6 +610,18 @@ class MessageHandler(
         }
     }
 
+    /** Odpowiednik [stringMessageToString] dobierający język klienta w trybie `auto`. */
+    fun stringMessageToString(
+        player: Player,
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): String = if (automaticLanguage) {
+        stringMessageToStringForLocale(player.locale, category, key, placeholders)
+    } else {
+        stringMessageToString(category, key, placeholders)
+    }
+
     /**
      * Wariant [stringMessageToString] z jawnym formatem źródłowym, który pomija autodetekcję.
      */
@@ -643,70 +690,6 @@ class MessageHandler(
         return yamlConfig.getStringList("$category.$key")
     }
 
-    /**
-     * @deprecated Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach.
-     *  Użyj zamiast niej: {@link #stringMessageToComponent}
-     */
-    @Deprecated(
-        "Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach. Użyj: stringMessageToComponent",
-        replaceWith = ReplaceWith("stringMessageToComponent(category, key, placeholders)"),
-        level = DeprecationLevel.WARNING
-    )
-    fun getMessage(category: String, key: String, placeholders: Map<String, String> = emptyMap()): Component {
-        return stringMessageToComponent(category, key, placeholders)
-    }
-
-    /**
-     * @deprecated Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach.
-     *  Użyj zamiast niej: {@link #stringMessageToString}
-     */
-    @Deprecated(
-        "Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach. Użyj: stringMessageToString",
-        replaceWith = ReplaceWith("stringMessageToString(category, key, placeholders)"),
-        level = DeprecationLevel.WARNING
-    )
-    fun getSimpleMessage(
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): String {
-        return stringMessageToString(category, key, placeholders)
-    }
-
-    /**
-     * @deprecated Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach.
-     *  Użyj zamiast niej: {@link #stringMessageToStringNoPrefix}
-     */
-    @Deprecated(
-        "Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach. Użyj: stringMessageToStringNoPrefix",
-        replaceWith = ReplaceWith("stringMessageToStringNoPrefix(category, key, placeholders)"),
-        level = DeprecationLevel.WARNING
-    )
-    fun getCleanMessage(
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): String {
-        return stringMessageToStringNoPrefix(category, key, placeholders)
-    }
-
-    /**
-     * @deprecated Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach.
-     *  Użyj zamiast niej: {@link #stringMessageToComponentNoPrefix}
-     */
-    @Deprecated(
-        "Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach. Użyj: stringMessageToComponentNoPrefix",
-        replaceWith = ReplaceWith("stringMessageToComponentNoPrefix(category, key, placeholders)"),
-        level = DeprecationLevel.WARNING
-    )
-    fun getLogMessage(
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): Component {
-        return stringMessageToComponentNoPrefix(category, key, placeholders)
-    }
-
     fun getSmartMessage(
         category: String,
         key: String,
@@ -772,17 +755,16 @@ class MessageHandler(
         }
     }
 
-    /**
-     * @deprecated Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach.
-     *  Użyj zamiast niej: {@link #getMessageStringList}
-     */
-    @Deprecated(
-        "Ta metoda została wycofana i zostanie usunięta w przyszłych wersjach. Użyj: getMessageStringList",
-        replaceWith = ReplaceWith("getMessageStringList(category, key)"),
-        level = DeprecationLevel.WARNING
-    )
-    fun getReasons(category: String, key: String): List<String> {
-        return yamlConfig.getStringList("$category.$key")
+    /** Odpowiednik [getSmartMessage] dobierający język klienta w trybie `auto`. */
+    fun getSmartMessage(
+        player: Player,
+        category: String,
+        key: String,
+        placeholders: Map<String, String> = emptyMap()
+    ): List<Component> = if (automaticLanguage) {
+        getSmartMessageForLocale(player.locale, category, key, placeholders)
+    } else {
+        getSmartMessage(category, key, placeholders)
     }
 
     /**
