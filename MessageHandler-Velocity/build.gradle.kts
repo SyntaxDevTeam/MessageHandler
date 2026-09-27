@@ -11,7 +11,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("com.velocitypowered:velocity-api:3.5.1")
+    compileOnly("com.velocitypowered:velocity-api:4.2.0")
     implementation("com.github.ben-manes.caffeine:caffeine:3.2.4")
     implementation("net.kyori:adventure-text-serializer-legacy:5.2.0")
     implementation("net.kyori:adventure-text-minimessage:5.2.0")
