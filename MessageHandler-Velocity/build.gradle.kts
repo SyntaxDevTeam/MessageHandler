@@ -18,7 +18,7 @@ dependencies {
     implementation("net.kyori:adventure-text-serializer-plain:5.2.0")
     implementation("net.kyori:adventure-text-serializer-ansi:5.2.0")
     implementation("net.kyori:adventure-nbt:5.2.0")
-    implementation("org.yaml:snakeyaml:2.6")
+    implementation("org.yaml:snakeyaml:2.7")
 }
 
 kotlin {
