@@ -9,88 +9,75 @@ import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver
 import net.kyori.adventure.text.serializer.ansi.ANSIComponentSerializer
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
-import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import java.io.File
+import java.nio.charset.StandardCharsets
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 @Suppress("unused")
-/**
- * Centralny serwis do wczytywania, buforowania i formatowania wiadomości z plików językowych.
- *
- * Klasa odpowiada za:
- * - synchronizację domyślnych plików językowych z katalogiem danych pluginu,
- * - wykrywanie przestarzałych tłumaczeń oraz ich automatyczny backup,
- * - parsowanie tekstu złożonego z MiniMessage, starych kodów kolorów (§ oraz &)
- *   oraz czystego tekstu,
- * - buforowanie wyników serializacji w kilku postaciach (Component, String, listy),
- * - udostępnianie wygodnych metod do pobierania wiadomości z prefiksem i bez.
- */
 class MessageHandler(
     private val resources: ResourceProvider,
     private val meta: PluginMetaProvider,
     private val logger: MessageLogger = MessageLogger.NO_OP
 ) {
+    data class LanguageValidationResult(
+        val valid: Boolean,
+        val file: File,
+        val error: String? = null
+    )
+
     @Volatile
     private var automaticLanguage = resources.getConfigValue("language", "EN").trim().equals("auto", ignoreCase = true)
+
     @Volatile
     private var language = configuredFallbackLanguage()
+
     @Volatile
     private var messagesFile = File(resources.dataFolder, "lang/messages_$language.yml")
 
-    private val componentCache: Cache<String, Component> =
-        Caffeine.newBuilder()
-            .maximumSize(1_000)
-            .expireAfterAccess(10, TimeUnit.MINUTES)
-            .build()
+    private val componentCache: Cache<String, Component> = Caffeine.newBuilder()
+        .maximumSize(1_000)
+        .expireAfterAccess(10, TimeUnit.MINUTES)
+        .build()
+    private val simpleCache: Cache<String, String> = Caffeine.newBuilder()
+        .maximumSize(1_000)
+        .expireAfterAccess(10, TimeUnit.MINUTES)
+        .build()
+    private val cleanCache: Cache<String, String> = Caffeine.newBuilder()
+        .maximumSize(1_000)
+        .expireAfterAccess(10, TimeUnit.MINUTES)
+        .build()
+    private val complexCache: Cache<String, List<Component>> = Caffeine.newBuilder()
+        .maximumSize(500)
+        .expireAfterAccess(10, TimeUnit.MINUTES)
+        .build()
+    private val localeConfigCache: Cache<String, FileConfiguration> = Caffeine.newBuilder()
+        .maximumSize(32)
+        .expireAfterAccess(10, TimeUnit.MINUTES)
+        .build()
 
-    private val simpleCache: Cache<String, String> =
-        Caffeine.newBuilder()
-            .maximumSize(1_000)
-            .expireAfterAccess(10, TimeUnit.MINUTES)
-            .build()
-
-    private val cleanCache: Cache<String, String> =
-        Caffeine.newBuilder()
-            .maximumSize(1_000)
-            .expireAfterAccess(10, TimeUnit.MINUTES)
-            .build()
-
-    private val complexCache: Cache<String, List<Component>> =
-        Caffeine.newBuilder()
-            .maximumSize(500)
-            .expireAfterAccess(10, TimeUnit.MINUTES)
-            .build()
-
-    private val localeConfigCache: Cache<String, FileConfiguration> =
-        Caffeine.newBuilder()
-            .maximumSize(32)
-            .expireAfterAccess(10, TimeUnit.MINUTES)
-            .build()
     private val mM = MiniMessage.miniMessage()
 
     @Volatile
     private var yamlConfig: FileConfiguration = YamlConfiguration()
 
     @Volatile
+    private var defaultYamlConfig: FileConfiguration = YamlConfiguration()
+
+    @Volatile
     private var prefix: String = "[${meta.name}]"
 
+    @Volatile
+    private var hasLoadedConfiguration = false
+
     init {
-        copyDefaultAndSync()
         reloadMessages()
     }
-
-    /**
-        * Ładuje bieżący plik YAML z wiadomościami z dysku.
-        *
-        * Funkcja jest izolowana, aby można ją było łatwo podmienić w testach lub przy
-        * przyszłych zmianach sposobu wczytywania konfiguracji.
-        */
-    private fun loadYaml(): FileConfiguration =
-        YamlConfiguration.loadConfiguration(messagesFile)
 
     private fun configuredFallbackLanguage(): String {
         val configured = resources.getConfigValue("language", "EN").trim().lowercase(Locale.ROOT)
@@ -109,13 +96,98 @@ class MessageHandler(
         messagesFile = File(resources.dataFolder, "lang/messages_$language.yml")
     }
 
-    /**
-     * Loguje informację o autorze pliku językowego po pierwszym wczytaniu handlera.
-     *
-     * Funkcja jest przewidziana do jednorazowego wywołania po konstrukcji – pozwala
-     * zweryfikować, że plik został wykryty, a język został prawidłowo dobrany do
-     * konfiguracji.
-     */
+    private fun resourcePathFor(languageCode: String = language): String =
+        "lang/messages_${languageCode.lowercase(Locale.ROOT)}.yml"
+
+    private fun parseYaml(file: File): FileConfiguration {
+        val text = file.readText(StandardCharsets.UTF_8)
+        return YamlConfiguration().apply { loadFromString(text) }
+    }
+
+    private fun parseYaml(text: String): FileConfiguration =
+        YamlConfiguration().apply { loadFromString(text) }
+
+    private fun loadBundledLanguage(resourcePath: String, logMissing: Boolean = true): FileConfiguration? {
+        val stream = resources.getResourceStream(resourcePath)
+        if (stream == null) {
+            if (logMissing) logger.err("Bundled language resource '$resourcePath' was not found.")
+            return null
+        }
+
+        return try {
+            val text = stream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+            parseYaml(text)
+        } catch (throwable: Throwable) {
+            logger.err("Bundled language resource '$resourcePath' is invalid: ${describeError(throwable)}")
+            null
+        }
+    }
+
+    private fun ensureLanguageFileExists(resourcePath: String) {
+        if (messagesFile.exists()) return
+        try {
+            messagesFile.parentFile?.mkdirs()
+            resources.saveResource(resourcePath, false)
+        } catch (throwable: Throwable) {
+            logger.err("Could not create ${messagesFile.path}: ${describeError(throwable)}. Bundled messages will be used in memory.")
+        }
+    }
+
+    private fun loadUserLanguage(file: File, createBackupOnFailure: Boolean): FileConfiguration? {
+        if (!file.exists()) return null
+        return try {
+            parseYaml(file)
+        } catch (throwable: Throwable) {
+            logger.err("Invalid YAML in ${file.path}: ${describeError(throwable)}")
+            logger.err("The language file has NOT been modified.")
+            if (createBackupOnFailure) backupInvalidLanguageFile(file)
+            null
+        }
+    }
+
+    private fun backupInvalidLanguageFile(file: File) {
+        try {
+            val backupDirectory = File(file.parentFile, "backups")
+            backupDirectory.mkdirs()
+            val timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss-SSS").format(LocalDateTime.now())
+            var backup = File(backupDirectory, "${file.nameWithoutExtension}_$timestamp.invalid.yml")
+            var suffix = 1
+            while (backup.exists()) {
+                backup = File(backupDirectory, "${file.nameWithoutExtension}_${timestamp}_$suffix.invalid.yml")
+                suffix++
+            }
+            file.copyTo(backup, overwrite = false)
+            logger.err("A safety copy of the invalid language file was saved to ${backup.path}.")
+        } catch (throwable: Throwable) {
+            logger.err("Could not create a safety copy of ${file.path}: ${describeError(throwable)}")
+        }
+    }
+
+    private fun describeError(throwable: Throwable): String =
+        throwable.message?.replace('\n', ' ')?.replace('\r', ' ')?.trim().takeUnless { it.isNullOrBlank() }
+            ?: throwable.javaClass.simpleName
+
+    private fun invalidateCaches() {
+        componentCache.invalidateAll()
+        simpleCache.invalidateAll()
+        cleanCache.invalidateAll()
+        complexCache.invalidateAll()
+        localeConfigCache.invalidateAll()
+    }
+
+    fun validateConfiguredLanguageFile(): LanguageValidationResult {
+        val configuredLanguage = configuredFallbackLanguage()
+        val file = File(resources.dataFolder, resourcePathFor(configuredLanguage))
+        if (!file.exists()) return LanguageValidationResult(true, file)
+
+        return try {
+            parseYaml(file)
+            LanguageValidationResult(true, file)
+        } catch (throwable: Throwable) {
+            LanguageValidationResult(false, file, describeError(throwable))
+        }
+    }
+
     fun initial() {
         val author = getAuthorFromYamlComment() ?: "SyntaxDevTeam"
         val loadedLanguage = if (automaticLanguage) {
@@ -126,72 +198,44 @@ class MessageHandler(
         logger.success("<gray>Loaded $loadedLanguage by: <white><b>$author</b></white>")
     }
 
-    /**
-     * Odczytuje autora pliku językowego z komentarza w pierwszych liniach pliku.
-     *
-     * @return wartość po `# Author:` lub `null`, gdy plik nie istnieje albo nie ma komentarza.
-     */
     private fun getAuthorFromYamlComment(): String? {
-        val path = "lang/messages_${language.lowercase()}.yml"
-        val langFile = File(resources.dataFolder, path)
+        val langFile = File(resources.dataFolder, resourcePathFor())
         if (!langFile.exists()) return null
-
         langFile.useLines { lines ->
-            for (line in lines) {
-                if (line.trim().startsWith("# Author:")) {
-                    return line.substringAfter("# Author:").trim()
-                }
+            lines.forEach { line ->
+                if (line.trim().startsWith("# Author:")) return line.substringAfter("# Author:").trim()
             }
         }
         return null
     }
 
-    /**
-     * Ekstrahuje oznaczenie wersji z nagłówka pliku językowego, jeśli jest obecne.
+    /*
+     * LEGACY LANGUAGE VERSIONING — INTENTIONALLY DISABLED.
      *
-     * @param langFile plik z katalogu lang, z którego ma być czytana wersja.
-     * @return wersja w formacie semantycznym albo `null`, gdy nie znaleziono nagłówka.
+     * These methods are kept as a trace of the old migration concept so it can be redesigned
+     * later. No runtime path calls them. Language files are never replaced based on this data.
      */
+    @Suppress("unused")
     private fun getVersionFromYamlHeader(langFile: File): String? {
         if (!langFile.exists()) return null
         val versionRegex = Regex("""#\s*(?:ver(?:sion)?[:.]?\s*)?(\d+\.\d+\.\d+)""", RegexOption.IGNORE_CASE)
-
         langFile.useLines { lines ->
             for ((index, line) in lines.withIndex()) {
                 if (index >= 2) break
-                val trimmed = line.trim()
-                val match = versionRegex.find(trimmed)
-                if (match != null) return match.groupValues[1]
+                versionRegex.find(line.trim())?.let { return it.groupValues[1] }
             }
         }
         return null
     }
 
-    /**
-     * Sprawdza, czy numer wersji jest starszy od wersji referencyjnej.
-     *
-     * Porównanie uwzględnia różne długości wersji (np. 1.2 vs 1.2.0) przez
-     * uzupełnienie brakujących segmentów zerami.
-     *
-     * @param version wersja z pliku.
-     * @param reference wersja odniesienia, do której porównujemy.
-     * @return `true`, jeśli `version` jest starsza, `false` w pozostałych przypadkach.
-     */
+    @Suppress("unused")
     private fun isVersionLowerThan(version: String, reference: String): Boolean {
-        fun parseVersion(value: String): List<Int>? {
-            val parts = value.split(".")
-            if (parts.isEmpty()) return null
-            return parts.map {
-                it.toIntOrNull() ?: return null
-            }
-        }
-
+        fun parseVersion(value: String): List<Int>? = value.split('.').map { it.toIntOrNull() ?: return null }
         val parsedVersion = parseVersion(version) ?: return false
         val parsedReference = parseVersion(reference) ?: return false
         val size = maxOf(parsedVersion.size, parsedReference.size)
         val normalizedVersion = parsedVersion + List(size - parsedVersion.size) { 0 }
         val normalizedReference = parsedReference + List(size - parsedReference.size) { 0 }
-
         for (index in 0 until size) {
             val diff = normalizedVersion[index].compareTo(normalizedReference[index])
             if (diff < 0) return true
@@ -200,199 +244,117 @@ class MessageHandler(
         return false
     }
 
-    /**
-     * Określa, czy plik językowy powinien zostać zastąpiony domyślną wersją
-     * ze względu na zbyt niską wersję.
-     *
-     * @param langFile istniejący plik w katalogu danych.
-     * @return `true`, jeśli należy wykonać backup i podmianę, `false` w przeciwnym razie.
-     */
+    @Suppress("unused")
     private fun shouldReplaceOutdatedLanguage(langFile: File): Boolean {
         val version = getVersionFromYamlHeader(langFile) ?: return false
-        if (!isVersionLowerThan(version, "2.0.0")) {
-            logger.success("Detected language file version $version. No replacement required.")
-            return false
-        }
-        return true
+        return isVersionLowerThan(version, "2.0.0")
     }
 
-    /**
-     * Synchronizuje domyślne pliki językowe z katalogiem danych pluginu.
-     *
-     * Operacja:
-     * 1. Tworzy kopię zapasową starych plików, jeśli wykryje wersję poniżej 2.0.0.
-     * 2. Kopiuje domyślny plik, jeśli nie istnieje.
-     * 3. Uzupełnia brakujące wpisy w aktualnym pliku na podstawie domyślnego.
-     * 4. Informuje loggerem o każdym z kroków.
-     */
-    private fun copyDefaultAndSync() {
-        val langDirectory = File(resources.dataFolder, "lang")
-        val resourcePath = "lang/messages_${language.lowercase()}.yml"
-        val targetFile = File(resources.dataFolder, resourcePath)
-
-        if (langDirectory.exists() && targetFile.exists() && shouldReplaceOutdatedLanguage(targetFile)) {
-            val backupDirectory = File(resources.dataFolder, "lang_old_ver")
-            if (backupDirectory.exists()) {
-                backupDirectory.deleteRecursively()
-            }
-/*
-            if (langDirectory.renameTo(backupDirectory)) {
-                logger.success("Detected outdated language files (version below 2.0.0). Backed up current lang directory to lang_old_ver.")
-            } else {
-                logger.err("Failed to backup outdated language directory to lang_old_ver.")
-            }*/
-        }
-
-        if (!targetFile.exists()) {
-            targetFile.parentFile.mkdirs()
-            resources.saveResource(resourcePath, false)
-        }
-
-        val langFile = File(resources.dataFolder, resourcePath)
-        val defaultStream = resources.getResourceStream(resourcePath)
-            ?: run {
-                logger.err("Default language file for $language not found!")
-                return
-            }
-
-        val defaultCfg = YamlConfiguration.loadConfiguration(defaultStream.reader())
-        val currentCfg = YamlConfiguration.loadConfiguration(langFile)
-        var updated = false
-
-        fun syncSections(def: ConfigurationSection, cur: ConfigurationSection) {
-            for (key in def.getKeys(false)) {
-                if (!cur.contains(key)) {
-                    cur[key] = def[key]
-                    updated = true
-                } else if (def.isConfigurationSection(key)) {
-                    syncSections(
-                        def.getConfigurationSection(key)!!,
-                        cur.getConfigurationSection(key)!!
-                    )
-                }
-            }
-        }
-        syncSections(defaultCfg, currentCfg)
-
-        if (updated) {
-            logger.success("Updating messages_${language.lowercase()}.yml with missing entries.")
-            currentCfg.save(langFile)
-        }
-    }
-
-    /**
-     * Ponownie wczytuje plik językowy z dysku i czyści wszystkie cache.
-     *
-     * Wywołanie wymagane po zmianie konfiguracji, aby kolejne zapytania korzystały
-     * z najnowszych wartości.
-     */
     fun reloadMessages() {
         refreshLanguageAndFile()
-        copyDefaultAndSync()
-        yamlConfig = loadYaml()
-        prefix = yamlConfig.getString("prefix") ?: "[${meta.name}]"
-        componentCache.invalidateAll()
-        simpleCache.invalidateAll()
-        cleanCache.invalidateAll()
-        complexCache.invalidateAll()
-        localeConfigCache.invalidateAll()
-    }
+        val resourcePath = resourcePathFor()
+        ensureLanguageFileExists(resourcePath)
 
-    /**
-     * Loguje błąd, gdy wpis nie został znaleziony, i zwraca domyślny tekst.
-     *
-     * @param category sekcja YAML, w której szukano.
-     * @param key nazwa wiadomości.
-     */
-    private fun errorLogAndDefault(category: String, key: String): String {
-        logger.err("Nie można załadować wiadomości $key z kategorii $category")
-        return "Message not found!"
-    }
-
-    /**
-     * Zwraca aktualny prefiks wiadomości wczytany z konfiguracji.
-     *
-     * Prefiks jest aktualizowany podczas [reloadMessages] i doklejany do większości metod
-     * `stringMessage*`, dzięki czemu pojedyncze wiadomości pozostają spójne stylistycznie.
-     */
-    fun getPrefix(): String = prefix
-
-    /**
-     * Buduje [TagResolver] z mapy placeholderów w formie tekstowej.
-     *
-     * Używany w każdej metodzie konwertującej wiadomości, aby parsowanie MiniMessage
-     * mogło wstawić dynamiczne wartości.
-     *
-     * @param placeholders para klucz-wartość przekazywana do MiniMessage.
-     * @return resolver gotowy do użycia w [MiniMessage.deserialize].
-     */
-    private fun createResolver(placeholders: Map<String, String>): TagResolver {
-        if (placeholders.isEmpty()) return TagResolver.empty()
-        val resolvers = placeholders.map { (k, v) -> Placeholder.parsed(k, v) }
-        return TagResolver.resolver(resolvers)
-    }
-
-    /**
-     * Skleja kategorię, klucz oraz placeholdery w deterministyczny identyfikator
-     * używany w kluczach cache.
-     *
-     * @param category sekcja YAML.
-     * @param key nazwa wiadomości.
-     * @param placeholders placeholdery użyte przy formatowaniu.
-     */
-    private fun composeKey(category: String, key: String, placeholders: Map<String, String>): String {
-        return buildString {
-            append(category).append('.').append(key)
-            if (placeholders.isNotEmpty()) {
-                append('?')
-                placeholders.entries.sortedBy { it.key }
-                    .joinTo(this, "&") { "${it.key}=${it.value}" }
+        val bundled = loadBundledLanguage(resourcePath)
+        if (bundled == null) {
+            if (hasLoadedConfiguration) {
+                logger.err("Language reload aborted because the bundled fallback is unavailable. The previously loaded messages remain active.")
+                return
             }
+            throw IllegalStateException("Cannot initialize MessageHandler: bundled language '$resourcePath' is unavailable or invalid.")
+        }
+
+        val userConfig = loadUserLanguage(messagesFile, createBackupOnFailure = true)
+        if (messagesFile.exists() && userConfig == null && hasLoadedConfiguration) {
+            logger.err("Language reload aborted. The previously loaded valid messages remain active until the YAML file is fixed.")
+            return
+        }
+
+        defaultYamlConfig = bundled
+        yamlConfig = userConfig ?: bundled
+        prefix = resolveString("prefix", listOf(yamlConfig, defaultYamlConfig)) ?: "[${meta.name}]"
+        hasLoadedConfiguration = true
+        invalidateCaches()
+
+        if (messagesFile.exists() && userConfig == null) {
+            logger.err("MessageHandler started with the bundled '$language' language in memory because the user file is invalid.")
         }
     }
 
-    private fun normalizeLocale(locale: String): String {
-        return locale.lowercase(Locale.ROOT).replace('-', '_')
+    fun getPrefix(): String = prefix
+
+    private fun createResolver(placeholders: Map<String, String>): TagResolver {
+        if (placeholders.isEmpty()) return TagResolver.empty()
+        return TagResolver.resolver(placeholders.map { (key, value) -> Placeholder.parsed(key, value) })
     }
+
+    private fun composeKey(category: String, key: String, placeholders: Map<String, String>): String = buildString {
+        append(category).append('.').append(key)
+        if (placeholders.isNotEmpty()) {
+            append('?')
+            placeholders.entries.sortedBy { it.key }.joinTo(this, "&") { "${it.key}=${it.value}" }
+        }
+    }
+
+    private fun normalizeLocale(locale: String): String = locale.lowercase(Locale.ROOT).replace('-', '_')
 
     private fun localeCandidates(locale: String): List<String> {
         val normalized = normalizeLocale(locale)
         val languageOnly = normalized.substringBefore('_')
-        return if (languageOnly == normalized) {
-            listOf(normalized)
-        } else {
-            listOf(normalized, languageOnly)
-        }
+        return if (languageOnly == normalized) listOf(normalized) else listOf(normalized, languageOnly)
     }
 
     private fun loadLocaleConfig(locale: String): FileConfiguration {
-        val candidates = localeCandidates(locale)
-        for (candidate in candidates) {
+        for (candidate in localeCandidates(locale)) {
             val file = File(resources.dataFolder, "lang/messages_$candidate.yml")
-            if (file.exists()) {
-                return localeConfigCache.get(candidate) {
-                    YamlConfiguration.loadConfiguration(file)
-                }
+            if (!file.exists()) continue
+            return localeConfigCache.get(candidate) {
+                loadUserLanguage(file, createBackupOnFailure = true)
+                    ?: loadBundledLanguage("lang/messages_$candidate.yml", logMissing = false)
+                    ?: yamlConfig
             }
         }
         return yamlConfig
     }
 
-    private fun getPrefixForConfig(config: FileConfiguration): String {
-        return config.getString("prefix") ?: prefix
+    private fun getPrefixForConfig(config: FileConfiguration): String =
+        resolveString("prefix", listOf(config, yamlConfig, defaultYamlConfig)) ?: prefix
+
+    private fun resolveString(path: String, configs: List<FileConfiguration>): String? {
+        for (config in configs.distinct()) {
+            val value = config.get(path) ?: continue
+            if (value is String) return value
+            logger.err("Language entry '$path' has type ${value.javaClass.simpleName}, expected String. Trying fallback value.")
+        }
+        return null
     }
 
-    /**
-     * Wspólna ścieżka obsługi cache dla wszystkich wariantów zwracających wiadomości.
-     *
-     * @param category sekcja YAML.
-     * @param key nazwa wiadomości.
-     * @param placeholders placeholdery do wypełnienia w treści.
-     * @param cache instancja cache dla typu wyjściowego.
-     * @param cacheKeyPrefix opcjonalny prefiks rozróżniający przestrzenie cache (np. logi).
-     * @param formatHint sugerowany format źródłowy, gdy nie chcemy autodetekcji.
-     * @param transform funkcja przekształcająca surowy tekst na rezultat.
-     */
+    private fun resolveStringList(path: String, configs: List<FileConfiguration>): List<String>? {
+        for (config in configs.distinct()) {
+            val value = config.get(path) ?: continue
+            if (value is List<*> && value.all { it is String }) return value.filterIsInstance<String>()
+            logger.err("Language entry '$path' has an invalid type or list content. Trying fallback value.")
+        }
+        return null
+    }
+
+    private fun resolveSmartValue(path: String, configs: List<FileConfiguration>): Any? {
+        for (config in configs.distinct()) {
+            when (val value = config.get(path)) {
+                null -> Unit
+                is String -> return value
+                is List<*> -> if (value.all { it is String }) return value else logger.err("Language entry '$path' contains non-string list elements. Trying fallback value.")
+                else -> logger.err("Language entry '$path' has unsupported type ${value.javaClass.simpleName}. Trying fallback value.")
+            }
+        }
+        return null
+    }
+
+    private fun errorLogAndDefault(category: String, key: String): String {
+        logger.err("Cannot load message '$key' from category '$category'.")
+        return "Message not found!"
+    }
+
     private fun <T> cacheMessage(
         category: String,
         key: String,
@@ -409,7 +371,7 @@ class MessageHandler(
         }
         val resolver = createResolver(placeholders)
         return cache.get(cacheKey) {
-            val raw = yamlConfig.getString("$category.$key")
+            val raw = resolveString("$category.$key", listOf(yamlConfig, defaultYamlConfig))
                 ?: errorLogAndDefault(category, key)
             transform(raw, resolver)
         }
@@ -435,497 +397,170 @@ class MessageHandler(
         val resolver = createResolver(placeholders)
         return cache.get(cacheKey) {
             val selectedConfig = loadLocaleConfig(normalizedLocale)
-            val path = "$category.$key"
-            val raw = selectedConfig.getString(path)
-                ?: yamlConfig.getString(path)
+            val raw = resolveString("$category.$key", listOf(selectedConfig, yamlConfig, defaultYamlConfig))
                 ?: errorLogAndDefault(category, key)
             transform(raw, resolver, selectedConfig)
         }
     }
 
-    /**
-     * Zwraca wiadomość jako [Component] z automatycznie dodanym prefiksem.
-     *
-     * Korzysta z cache, więc kolejne odczyty są szybkie, a placeholdery
-     * zostają wstawione za pomocą MiniMessage.
-     */
-    fun stringMessageToComponent(
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): Component {
-        return cacheMessage(
-            category,
-            key,
-            placeholders,
-            componentCache
-        ) { raw, resolver ->
-            val full = "$prefix $raw"
-            parseMixedMessage(full, resolver).component
+    fun stringMessageToComponent(category: String, key: String, placeholders: Map<String, String> = emptyMap()): Component =
+        cacheMessage(category, key, placeholders, componentCache) { raw, resolver ->
+            parseMixedMessage("$prefix $raw", resolver).component
         }
-    }
 
-    /**
-     * Wariant [stringMessageToComponent] z wyborem języka na podstawie locale klienta.
-     *
-     * Funkcja nie modyfikuje globalnego języka handlera. Szuka plików w kolejności:
-     * 1) messages_{locale}.yml (np. en_us)
-     * 2) messages_{language}.yml (np. en)
-     * 3) fallback do pliku bazowego z konfiguracji (`language`).
-     */
-    fun stringMessageToComponentForLocale(
-        locale: String,
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): Component {
-        return cacheLocalizedMessage(
-            locale = locale,
-            category = category,
-            key = key,
-            placeholders = placeholders,
-            cache = componentCache
-        ) { raw, resolver, selectedConfig ->
-            val full = "${getPrefixForConfig(selectedConfig)} $raw"
-            parseMixedMessage(full, resolver).component
+    fun stringMessageToComponentForLocale(locale: String, category: String, key: String, placeholders: Map<String, String> = emptyMap()): Component =
+        cacheLocalizedMessage(locale, category, key, placeholders, componentCache) { raw, resolver, selectedConfig ->
+            parseMixedMessage("${getPrefixForConfig(selectedConfig)} $raw", resolver).component
         }
-    }
 
-    /**
-     * Pobiera wiadomość w języku klienta [player], gdy `language: auto`.
-     * Dla jawnie ustawionego języka zachowuje dotychczasowe, globalne działanie.
-     */
-    fun stringMessageToComponent(
-        player: Player,
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): Component = if (automaticLanguage) {
-        stringMessageToComponentForLocale(player.locale, category, key, placeholders)
-    } else {
-        stringMessageToComponent(category, key, placeholders)
-    }
+    fun stringMessageToComponent(player: Player, category: String, key: String, placeholders: Map<String, String> = emptyMap()): Component =
+        if (automaticLanguage) stringMessageToComponentForLocale(player.locale, category, key, placeholders)
+        else stringMessageToComponent(category, key, placeholders)
 
-    /**
-     * Jak [stringMessageToComponent], ale z narzuconym formatem źródłowym
-     * (MiniMessage, legacy lub plain), co pozwala ominąć autodetekcję.
-     */
-    fun stringMessageToComponent(
-        category: String,
-        key: String,
-        format: MessageFormat,
-        placeholders: Map<String, String> = emptyMap()
-    ): Component {
-        return cacheMessage(
-            category,
-            key,
-            placeholders,
-            componentCache,
-            formatHint = format
-        ) { raw, resolver ->
-            val full = "$prefix $raw"
-            parseMixedMessage(full, resolver, format).component
+    fun stringMessageToComponent(category: String, key: String, format: MessageFormat, placeholders: Map<String, String> = emptyMap()): Component =
+        cacheMessage(category, key, placeholders, componentCache, formatHint = format) { raw, resolver ->
+            parseMixedMessage("$prefix $raw", resolver, format).component
         }
-    }
 
-    /**
-     * Buduje [Component] bez doklejania prefiksu, co przydaje się w logach
-     * lub wiadomościach wewnętrznych.
-     */
-    fun stringMessageToComponentNoPrefix(
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): Component {
-        return cacheMessage(
-            category,
-            key,
-            placeholders,
-            componentCache,
-            cacheKeyPrefix = "log."
-        ) { raw, resolver ->
+    fun stringMessageToComponentNoPrefix(category: String, key: String, placeholders: Map<String, String> = emptyMap()): Component =
+        cacheMessage(category, key, placeholders, componentCache, cacheKeyPrefix = "log.") { raw, resolver ->
             parseMixedMessage(raw, resolver).component
         }
-    }
 
-    /**
-     * Wariant [stringMessageToComponentNoPrefix] z wymuszeniem formatu źródłowego.
-     */
-    fun stringMessageToComponentNoPrefix(
-        category: String,
-        key: String,
-        format: MessageFormat,
-        placeholders: Map<String, String> = emptyMap()
-    ): Component {
-        return cacheMessage(
-            category,
-            key,
-            placeholders,
-            componentCache,
-            cacheKeyPrefix = "log.",
-            formatHint = format
-        ) { raw, resolver ->
+    fun stringMessageToComponentNoPrefix(category: String, key: String, format: MessageFormat, placeholders: Map<String, String> = emptyMap()): Component =
+        cacheMessage(category, key, placeholders, componentCache, cacheKeyPrefix = "log.", formatHint = format) { raw, resolver ->
             parseMixedMessage(raw, resolver, format).component
         }
-    }
 
-    /**
-     * Zwraca wiadomość jako sformatowany String z prefiksem, zachowując
-     * oryginalny format (MiniMessage, legacy lub plain).
-     */
-    fun stringMessageToString(
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): String {
-        return cacheMessage(
-            category,
-            key,
-            placeholders,
-            simpleCache
-        ) { raw, resolver ->
-            val parsed = parseMixedMessage("$prefix $raw", resolver)
-            serializeComponent(parsed)
+    fun stringMessageToString(category: String, key: String, placeholders: Map<String, String> = emptyMap()): String =
+        cacheMessage(category, key, placeholders, simpleCache) { raw, resolver ->
+            serializeComponent(parseMixedMessage("$prefix $raw", resolver))
         }
-    }
 
-    /**
-     * Wariant [stringMessageToString] z wyborem języka na podstawie locale klienta.
-     */
-    fun stringMessageToStringForLocale(
-        locale: String,
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): String {
-        return cacheLocalizedMessage(
-            locale = locale,
-            category = category,
-            key = key,
-            placeholders = placeholders,
-            cache = simpleCache
-        ) { raw, resolver, selectedConfig ->
-            val parsed = parseMixedMessage("${getPrefixForConfig(selectedConfig)} $raw", resolver)
-            serializeComponent(parsed)
+    fun stringMessageToStringForLocale(locale: String, category: String, key: String, placeholders: Map<String, String> = emptyMap()): String =
+        cacheLocalizedMessage(locale, category, key, placeholders, simpleCache) { raw, resolver, selectedConfig ->
+            serializeComponent(parseMixedMessage("${getPrefixForConfig(selectedConfig)} $raw", resolver))
         }
-    }
 
-    /** Odpowiednik [stringMessageToString] dobierający język klienta w trybie `auto`. */
-    fun stringMessageToString(
-        player: Player,
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): String = if (automaticLanguage) {
-        stringMessageToStringForLocale(player.locale, category, key, placeholders)
-    } else {
-        stringMessageToString(category, key, placeholders)
-    }
+    fun stringMessageToString(player: Player, category: String, key: String, placeholders: Map<String, String> = emptyMap()): String =
+        if (automaticLanguage) stringMessageToStringForLocale(player.locale, category, key, placeholders)
+        else stringMessageToString(category, key, placeholders)
 
-    /**
-     * Wariant [stringMessageToString] z jawnym formatem źródłowym, który pomija autodetekcję.
-     */
-    fun stringMessageToString(
-        category: String,
-        key: String,
-        format: MessageFormat,
-        placeholders: Map<String, String> = emptyMap()
-    ): String {
-        return cacheMessage(
-            category,
-            key,
-            placeholders,
-            simpleCache,
-            formatHint = format
-        ) { raw, resolver ->
-            val parsed = parseMixedMessage("$prefix $raw", resolver, format)
-            serializeComponent(parsed)
+    fun stringMessageToString(category: String, key: String, format: MessageFormat, placeholders: Map<String, String> = emptyMap()): String =
+        cacheMessage(category, key, placeholders, simpleCache, formatHint = format) { raw, resolver ->
+            serializeComponent(parseMixedMessage("$prefix $raw", resolver, format))
         }
-    }
 
-    /**
-     * Zwraca wiadomość jako String bez prefiksu, zachowując format źródłowy.
-     */
-    fun stringMessageToStringNoPrefix(
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): String {
-        return cacheMessage(
-            category,
-            key,
-            placeholders,
-            cleanCache
-        ) { raw, resolver ->
-            val parsed = parseMixedMessage(raw, resolver)
-            serializeComponent(parsed)
+    fun stringMessageToStringNoPrefix(category: String, key: String, placeholders: Map<String, String> = emptyMap()): String =
+        cacheMessage(category, key, placeholders, cleanCache) { raw, resolver -> serializeComponent(parseMixedMessage(raw, resolver)) }
+
+    fun stringMessageToStringNoPrefix(category: String, key: String, format: MessageFormat, placeholders: Map<String, String> = emptyMap()): String =
+        cacheMessage(category, key, placeholders, cleanCache, formatHint = format) { raw, resolver ->
+            serializeComponent(parseMixedMessage(raw, resolver, format))
         }
-    }
 
-    /**
-     * Wariant [stringMessageToStringNoPrefix] z wymuszonym formatem źródłowym.
-     */
-    fun stringMessageToStringNoPrefix(
-        category: String,
-        key: String,
-        format: MessageFormat,
-        placeholders: Map<String, String> = emptyMap()
-    ): String {
-        return cacheMessage(
-            category,
-            key,
-            placeholders,
-            cleanCache,
-            formatHint = format
-        ) { raw, resolver ->
-            val parsed = parseMixedMessage(raw, resolver, format)
-            serializeComponent(parsed)
-        }
-    }
+    fun getMessageStringList(category: String, key: String): List<String> =
+        resolveStringList("$category.$key", listOf(yamlConfig, defaultYamlConfig)) ?: emptyList()
 
-    /**
-     * Zwraca listę surowych wpisów tekstowych z konfiguracji (bez parsowania).
-     */
-    fun getMessageStringList(category: String, key: String): List<String> {
-        return yamlConfig.getStringList("$category.$key")
-    }
-
-    fun getSmartMessage(
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): List<Component> {
+    fun getSmartMessage(category: String, key: String, placeholders: Map<String, String> = emptyMap()): List<Component> {
         val cacheKey = composeKey("smart.$category", key, placeholders)
         val resolver = createResolver(placeholders)
         return complexCache.get(cacheKey) {
-            val path = "$category.$key"
-            when (val rawValue = yamlConfig.get(path)) {
-                is String -> {
-                    listOf(
-                        formatMixedTextToMiniMessage("$prefix $rawValue", resolver)
-                    )
-                }
-                is List<*> -> {
-                    rawValue.filterIsInstance<String>().map { line ->
-                        formatMixedTextToMiniMessage(line, resolver)
-                    }
-                }
-                else -> {
-                    logger.err("There was an error loading the smart message $key from category $category")
-                    listOf(Component.text("Message not found. Check console..."))
-                }
-            }
+            renderSmartMessage(
+                resolveSmartValue("$category.$key", listOf(yamlConfig, defaultYamlConfig)),
+                prefix,
+                resolver,
+                category,
+                key
+            )
         }
     }
 
-    /**
-     * Wariant [getSmartMessage] z wyborem języka na podstawie locale klienta.
-     */
-    fun getSmartMessageForLocale(
-        locale: String,
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): List<Component> {
+    fun getSmartMessageForLocale(locale: String, category: String, key: String, placeholders: Map<String, String> = emptyMap()): List<Component> {
         val normalizedLocale = normalizeLocale(locale)
         val cacheKey = "locale:$normalizedLocale|" + composeKey("smart.$category", key, placeholders)
         val resolver = createResolver(placeholders)
-
         return complexCache.get(cacheKey) {
             val selectedConfig = loadLocaleConfig(normalizedLocale)
-            val selectedPrefix = getPrefixForConfig(selectedConfig)
-            val path = "$category.$key"
-
-            when (val rawValue = selectedConfig.get(path) ?: yamlConfig.get(path)) {
-                is String -> {
-                    listOf(
-                        formatMixedTextToMiniMessage("$selectedPrefix $rawValue", resolver)
-                    )
-                }
-                is List<*> -> {
-                    rawValue.filterIsInstance<String>().map { line ->
-                        formatMixedTextToMiniMessage(line, resolver)
-                    }
-                }
-                else -> {
-                    logger.err("There was an error loading localized smart message $key from category $category for locale $normalizedLocale")
-                    listOf(Component.text("Message not found. Check console..."))
-                }
-            }
+            renderSmartMessage(
+                resolveSmartValue("$category.$key", listOf(selectedConfig, yamlConfig, defaultYamlConfig)),
+                getPrefixForConfig(selectedConfig),
+                resolver,
+                category,
+                key
+            )
         }
     }
 
-    /** Odpowiednik [getSmartMessage] dobierający język klienta w trybie `auto`. */
-    fun getSmartMessage(
-        player: Player,
-        category: String,
-        key: String,
-        placeholders: Map<String, String> = emptyMap()
-    ): List<Component> = if (automaticLanguage) {
-        getSmartMessageForLocale(player.locale, category, key, placeholders)
-    } else {
-        getSmartMessage(category, key, placeholders)
-    }
+    fun getSmartMessage(player: Player, category: String, key: String, placeholders: Map<String, String> = emptyMap()): List<Component> =
+        if (automaticLanguage) getSmartMessageForLocale(player.locale, category, key, placeholders)
+        else getSmartMessage(category, key, placeholders)
 
-    /**
-     * Konwertuje tekst w składni legacy (`&`) na [Component].
-     */
-    fun formatLegacyText(message: String): Component {
-        return LegacyComponentSerializer.legacyAmpersand().deserialize(message)
-    }
+    private fun renderSmartMessage(value: Any?, selectedPrefix: String, resolver: TagResolver, category: String, key: String): List<Component> =
+        when (value) {
+            is String -> listOf(formatMixedTextToMiniMessage("$selectedPrefix $value", resolver))
+            is List<*> -> value.filterIsInstance<String>().map { formatMixedTextToMiniMessage(it, resolver) }
+            else -> {
+                logger.err("There was an error loading the smart message $key from category $category")
+                listOf(Component.text("Message not found. Check console..."))
+            }
+        }
 
-    /**
-     * Parsuje tekst zawierający mieszankę kodów `§` oraz notacji hex (`&#RRGGBB`)
-     * do komponentu Adventure.
-     */
+    fun formatLegacyText(message: String): Component = LegacyComponentSerializer.legacyAmpersand().deserialize(message)
+
     fun formatHexAndLegacyText(message: String): Component {
         val hexFormatted = message.replace("&#([a-fA-F0-9]{6})".toRegex()) {
             val hex = it.groupValues[1]
             "§x§${hex[0]}§${hex[1]}§${hex[2]}§${hex[3]}§${hex[4]}§${hex[5]}"
         }
-
         return LegacyComponentSerializer.legacySection().deserialize(hexFormatted)
     }
 
-    /**
-     * Bezpośrednio deserializuje podany tekst MiniMessage na [Component].
-     */
-    fun miniMessageFormat(message: String): Component {
-        return mM.deserialize(message)
-    }
+    fun miniMessageFormat(message: String): Component = mM.deserialize(message)
+    fun getANSIText(component: Component): String = ANSIComponentSerializer.ansi().serialize(component)
+    fun getPlainText(component: Component): String = PlainTextComponentSerializer.plainText().serialize(component)
 
-    /**
-     * Serializuje komponent do formatu ANSI, przydatnego w konsoli.
-     */
-    fun getANSIText(component: Component): String {
-        return ANSIComponentSerializer.ansi().serialize(component)
-    }
-
-    /**
-     * Zwraca czysty tekst z komponentu, ignorując formatowanie.
-     */
-    fun getPlainText(component: Component): String {
-        return PlainTextComponentSerializer.plainText().serialize(component)
-    }
-
-    /**
-     * Konwertuje mieszane formaty legacy na MiniMessage, zachowując oryginalne tagi MiniMessage.
-     *
-     * @param message tekst zawierający potencjalne fragmenty MiniMessage i legacy.
-     * @param serializer serializer odpowiedzialny za interpretację kodów kolorów.
-     */
-    fun convertWithLegacySerializer(
-        message: String,
-        serializer: LegacyComponentSerializer
-    ): String {
+    private fun convertWithLegacySerializer(message: String, serializer: LegacyComponentSerializer): String {
         val pattern = Regex("(<[^>]+>|\\{[^}]+})")
         val result = StringBuilder()
         var lastIndex = 0
-
         for (match in pattern.findAll(message)) {
             val start = match.range.first
-            if (start > lastIndex) {
-                val nonTag = message.substring(lastIndex, start)
-                val component = serializer.deserialize(nonTag)
-                result.append(mM.serialize(component))
-            }
+            if (start > lastIndex) result.append(mM.serialize(serializer.deserialize(message.substring(lastIndex, start))))
             result.append(match.value)
             lastIndex = match.range.last + 1
         }
-        if (lastIndex < message.length) {
-            val component = serializer.deserialize(message.substring(lastIndex))
-            result.append(mM.serialize(component))
-        }
+        if (lastIndex < message.length) result.append(mM.serialize(serializer.deserialize(message.substring(lastIndex))))
         return result.toString()
     }
 
-    /**
-     * Zamienia kody `&` na składnię MiniMessage.
-     */
-    fun convertLegacyToMiniMessage(message: String): String {
-        val serializer = legacySerializerWithHex('&')
-        return convertWithLegacySerializer(message, serializer)
-    }
+    private fun convertLegacyToMiniMessage(message: String): String =
+        convertWithLegacySerializer(message, legacySerializerWithHex('&'))
 
-    /**
-     * Serializuje format dla Bukkit
-     */
+    fun legacySerializer(message: String): String = LegacyComponentSerializer.legacySection().serialize(Component.text(message))
+    fun legacyComponentSerializer(message: Component): String = LegacyComponentSerializer.legacySection().serialize(message)
 
-    fun legacySerializer(message: String): String {
-        val component = Component.text(message)
-        return LegacyComponentSerializer.legacySection().serialize(component)
-    }
+    private fun convertSectionSignToMiniMessage(message: String): String =
+        convertWithLegacySerializer(message, legacySerializerWithHex('§'))
 
-    fun legacyComponentSerializer(message: Component): String {
-        return LegacyComponentSerializer.legacySection().serialize(message)
-    }
+    private fun legacySerializerWithHex(character: Char): LegacyComponentSerializer =
+        LegacyComponentSerializer.builder().character(character).hexColors().build()
 
-    /**
-     * Zamienia kody `§` na składnię MiniMessage.
-     */
-    fun convertSectionSignToMiniMessage(message: String): String {
-        val serializer = legacySerializerWithHex('§')
-        return convertWithLegacySerializer(message, serializer)
-    }
-
-    private fun legacySerializerWithHex(character: Char): LegacyComponentSerializer {
-        return LegacyComponentSerializer.builder()
-            .character(character)
-            .hexColors()
-            .build()
-    }
-
-    /**
-     * Rozkodowuje sekwencje `\uXXXX` w tekście przed dalszym parsowaniem.
-     */
-    fun convertUnicodeEscapeSequences(input: String): String {
-        return input.replace(Regex("""\\u([0-9A-Fa-f]{4})""")) { matchResult ->
-            val codePoint = matchResult.groupValues[1].toInt(16)
-            String(Character.toChars(codePoint))
+    private fun convertUnicodeEscapeSequences(input: String): String =
+        input.replace(Regex("""\\u([0-9A-Fa-f]{4})""")) { matchResult ->
+            String(Character.toChars(matchResult.groupValues[1].toInt(16)))
         }
-    }
 
-    /**
-     * Główne wejście do parsowania tekstu mieszanego na komponent MiniMessage.
-     *
-     * @param message treść wiadomości.
-     * @param resolver zestaw placeholderów MiniMessage.
-     */
-    fun formatMixedTextToMiniMessage(message: String, resolver: TagResolver? = TagResolver.empty()): Component {
-        return parseMixedMessage(message, resolver).component
-    }
+    fun formatMixedTextToMiniMessage(message: String, resolver: TagResolver? = TagResolver.empty()): Component =
+        parseMixedMessage(message, resolver).component
 
-    /**
-     * Wymusza parsowanie podanego tekstu w określonym [MessageFormat].
-     */
-    fun formatTextToComponent(
-        message: String,
-        format: MessageFormat,
-        resolver: TagResolver? = TagResolver.empty()
-    ): Component {
-        return parseMixedMessage(message, resolver, format).component
-    }
+    fun formatTextToComponent(message: String, format: MessageFormat, resolver: TagResolver? = TagResolver.empty()): Component =
+        parseMixedMessage(message, resolver, format).component
 
-    /**
-     * Zwraca wynik parsowania w postaci tekstu legacy (`&`), niezależnie od wejścia.
-     *
-     * @param message treść wiadomości.
-     * @param resolver placeholdery MiniMessage przekazywane do parsera.
-     */
-    fun formatMixedTextToLegacy(message: String, resolver: TagResolver? = TagResolver.empty()): String {
-        val parsed = parseMixedMessage(message, resolver)
-        return serializeComponent(parsed, MessageFormat.LEGACY_AMPERSAND)
-    }
+    fun formatMixedTextToLegacy(message: String, resolver: TagResolver? = TagResolver.empty()): String =
+        serializeComponent(parseMixedMessage(message, resolver), MessageFormat.LEGACY_AMPERSAND)
 
-    /**
-     * Parsuje wiadomość, wykrywa jej format (lub korzysta z [formatHint]) i zwraca
-     * zarówno komponent, jak i źródłowy format.
-     */
-    private fun parseMixedMessage(
-        message: String,
-        resolver: TagResolver?,
-        formatHint: MessageFormat? = null
-    ): ParsedMessage {
+    private fun parseMixedMessage(message: String, resolver: TagResolver?, formatHint: MessageFormat? = null): ParsedMessage {
         val normalized = if (message.contains("\\u")) convertUnicodeEscapeSequences(message) else message
         val format = formatHint ?: detectMessageFormat(normalized)
         val component = when (format) {
@@ -937,56 +572,26 @@ class MessageHandler(
         return ParsedMessage(component, format)
     }
 
-    /**
-     * Deserializuje MiniMessage, opcjonalnie z resolverem placeholderów.
-     */
-    private fun deserializeMiniMessage(message: String, resolver: TagResolver?): Component {
-        return if (resolver != null) {
-            mM.deserialize(message, resolver)
-        } else {
-            mM.deserialize(message)
-        }
+    private fun deserializeMiniMessage(message: String, resolver: TagResolver?): Component =
+        if (resolver != null) mM.deserialize(message, resolver) else mM.deserialize(message)
+
+    private fun detectMessageFormat(message: String): MessageFormat = when {
+        "<[^>]+>".toRegex().containsMatchIn(message) -> MessageFormat.MINI_MESSAGE
+        "§[0-9a-fk-orA-FK-OR]".toRegex().containsMatchIn(message) -> MessageFormat.LEGACY_SECTION
+        "&[0-9a-fk-orA-FK-OR]".toRegex().containsMatchIn(message) -> MessageFormat.LEGACY_AMPERSAND
+        else -> MessageFormat.PLAIN
     }
 
-    /**
-     * Na podstawie zawartości tekstu zgaduje format źródłowy (MiniMessage, legacy lub plain).
-     */
-    private fun detectMessageFormat(message: String): MessageFormat {
-        val hasMiniMessageTags = "<[^>]+>".toRegex().containsMatchIn(message)
-        val hasSectionColors = "§[0-9a-fk-orA-FK-OR]".toRegex().containsMatchIn(message)
-        val hasLegacyColors = "&[0-9a-fk-orA-FK-OR]".toRegex().containsMatchIn(message)
-
-        return when {
-            hasMiniMessageTags -> MessageFormat.MINI_MESSAGE
-            hasSectionColors -> MessageFormat.LEGACY_SECTION
-            hasLegacyColors -> MessageFormat.LEGACY_AMPERSAND
-            else -> MessageFormat.PLAIN
-        }
-    }
-
-    /**
-     * Serializuje [ParsedMessage] do formatu docelowego, domyślnie zachowując format źródłowy.
-     */
-    private fun serializeComponent(parsedMessage: ParsedMessage, targetFormat: MessageFormat = parsedMessage.sourceFormat): String {
-        return when (targetFormat) {
+    private fun serializeComponent(parsedMessage: ParsedMessage, targetFormat: MessageFormat = parsedMessage.sourceFormat): String =
+        when (targetFormat) {
             MessageFormat.MINI_MESSAGE -> mM.serialize(parsedMessage.component)
             MessageFormat.LEGACY_SECTION -> legacySerializerWithHex('§').serialize(parsedMessage.component)
             MessageFormat.LEGACY_AMPERSAND -> legacySerializerWithHex('&').serialize(parsedMessage.component)
             MessageFormat.PLAIN -> getPlainText(parsedMessage.component)
         }
-    }
 
-    /**
-     * Struktura pomocnicza łącząca komponent z wykrytym formatem źródłowym.
-     */
-    private data class ParsedMessage(
-        val component: Component,
-        val sourceFormat: MessageFormat
-    )
+    private data class ParsedMessage(val component: Component, val sourceFormat: MessageFormat)
 
-    /**
-     * Typy formatów wiadomości obsługiwane przez handler.
-     */
     enum class MessageFormat {
         MINI_MESSAGE,
         LEGACY_SECTION,
