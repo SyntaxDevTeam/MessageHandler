@@ -21,6 +21,14 @@ dependencies {
     compileOnly("net.kyori:adventure-text-serializer-plain:5.2.0")
     compileOnly("net.kyori:adventure-text-serializer-ansi:5.2.0")
     compileOnly("net.kyori:adventure-nbt:5.2.0")
+
+    testImplementation(kotlin("test"))
+    testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
+    testImplementation("com.github.ben-manes.caffeine:caffeine:3.3.0")
+    testImplementation("net.kyori:adventure-text-serializer-legacy:5.2.0")
+    testImplementation("net.kyori:adventure-text-minimessage:5.2.0")
+    testImplementation("net.kyori:adventure-text-serializer-plain:5.2.0")
+    testImplementation("net.kyori:adventure-text-serializer-ansi:5.2.0")
 }
 
 kotlin {
@@ -30,6 +38,9 @@ kotlin {
 tasks {
     build {
         dependsOn("shadowJar")
+    }
+    test {
+        useJUnitPlatform()
     }
 }
 
