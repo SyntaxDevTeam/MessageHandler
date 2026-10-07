@@ -24,8 +24,9 @@ dependencies {
     testImplementation("com.velocitypowered:velocity-api:4.2.0")
 }
 
+// Velocity 4.2 is compiled for Java 25, so this module must use the same baseline.
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(25)
 }
 
 tasks {
