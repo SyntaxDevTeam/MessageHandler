@@ -19,6 +19,9 @@ dependencies {
     implementation("net.kyori:adventure-text-serializer-ansi:5.2.0")
     implementation("net.kyori:adventure-nbt:5.2.0")
     implementation("org.yaml:snakeyaml:2.7")
+
+    testImplementation(kotlin("test"))
+    testImplementation("net.md-5:bungeecord-api:26.1-R0.1-SNAPSHOT")
 }
 
 kotlin {
@@ -28,6 +31,9 @@ kotlin {
 tasks {
     build {
         dependsOn("shadowJar")
+    }
+    test {
+        useJUnitPlatform()
     }
 }
 
