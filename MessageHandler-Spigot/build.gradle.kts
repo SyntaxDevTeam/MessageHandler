@@ -31,6 +31,15 @@ dependencies {
     compileOnly("net.kyori:examination-api:1.3.0")
     compileOnly("net.kyori:examination-string:1.3.0")
     compileOnly("net.kyori:option:1.1.0")
+
+    testImplementation(kotlin("test"))
+    testImplementation("org.spigotmc:spigot-api:26.1-R0.1-SNAPSHOT")
+    testImplementation("com.github.ben-manes.caffeine:caffeine:3.3.0")
+    testImplementation("net.kyori:adventure-api:5.2.0")
+    testImplementation("net.kyori:adventure-text-minimessage:5.2.0")
+    testImplementation("net.kyori:adventure-text-serializer-legacy:5.2.0")
+    testImplementation("net.kyori:adventure-text-serializer-plain:5.2.0")
+    testImplementation("net.kyori:adventure-text-serializer-ansi:5.2.0")
 }
 
 kotlin {
@@ -40,6 +49,9 @@ kotlin {
 tasks {
     build {
         dependsOn("shadowJar")
+    }
+    test {
+        useJUnitPlatform()
     }
 }
 
