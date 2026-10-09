@@ -516,6 +516,47 @@ class MessageHandler(
         return LegacyComponentSerializer.legacySection().deserialize(hexFormatted)
     }
 
+    /** Serializes a built component using the same codecs as configured messages. */
+    fun componentToString(component: Component, format: MessageFormat): String =
+        serializeComponent(ParsedMessage(component, format), format)
+
+    /** Reports the source template format before dynamic component insertion or serialization. */
+    fun getMessageFormat(category: String, key: String, includePrefix: Boolean = false): MessageFormat {
+        val raw = resolveString("$category.$key", listOf(yamlConfig, defaultYamlConfig))
+            ?: errorLogAndDefault(category, key)
+        return detectMessageFormat(if (includePrefix) "$prefix $raw" else raw)
+    }
+
+    /** Renders server-configured rich fragments containing legacy codes and MiniMessage tags. */
+    fun formatRichTextToComponent(message: String, resolver: TagResolver = TagResolver.empty()): Component =
+        deserializeMiniMessage(normalizeRichText(message), resolver)
+
+    /** Dynamic values are literal text; formatting remains confined to the language template. */
+    fun stringMessageToComponentNoPrefixLiteral(category: String, key: String, placeholders: Map<String, String> = emptyMap()): Component {
+        val raw = resolveString("$category.$key", listOf(yamlConfig, defaultYamlConfig))
+            ?: errorLogAndDefault(category, key)
+        val resolver = TagResolver.resolver(placeholders.map { (name, value) -> Placeholder.unparsed(name, value) })
+        return parseMixedMessage(raw, resolver).component
+    }
+
+    private fun normalizeRichText(message: String): String {
+        val colors = listOf("black", "dark_blue", "dark_green", "dark_aqua", "dark_red", "dark_purple", "gold", "gray", "dark_gray", "blue", "green", "aqua", "red", "light_purple", "yellow", "white")
+        val expanded = Regex("[&§]x((?:[&§][0-9a-f]){6})", RegexOption.IGNORE_CASE).replace(message) {
+            "<#" + it.groupValues[1].filter { c -> c != '&' && c != '§' } + ">"
+        }
+        val hex = Regex("[&§]#([0-9a-f]{6})", RegexOption.IGNORE_CASE).replace(expanded) { "<#${it.groupValues[1]}>" }
+        return Regex("[&§]([0-9a-fk-or])", RegexOption.IGNORE_CASE).replace(hex) {
+            val code = it.groupValues[1].lowercase()[0]
+            // A legacy color code resets decorations, unlike a MiniMessage color tag.
+            if (code in '0'..'9' || code in 'a'..'f') {
+                "<bold:false><italic:false><underlined:false><strikethrough:false><obfuscated:false><${colors[code.digitToInt(16)]}>"
+            } else when (code) {
+                'k' -> "<obfuscated>"; 'l' -> "<bold>"; 'm' -> "<strikethrough>"
+                'n' -> "<underlined>"; 'o' -> "<italic>"; else -> "<reset>"
+            }
+        }
+    }
+
     fun miniMessageFormat(message: String): Component = mM.deserialize(message)
     fun getANSIText(component: Component): String = ANSIComponentSerializer.ansi().serialize(component)
     fun getPlainText(component: Component): String = PlainTextComponentSerializer.plainText().serialize(component)

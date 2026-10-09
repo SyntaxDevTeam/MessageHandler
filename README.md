@@ -146,3 +146,7 @@ itp. nowe przeciążenia zachowują dotychczasowy, globalny wybór języka.
  * `formatMixedTextToMiniMessage(message, resolver)` – przyjmuje tekst mieszany (MiniMessage + legacy + § + sekwencje \uXXXX) i zwraca poprawnie zdeserializowany komponent, opcjonalnie z resolverem placeholderów. Najczęściej używane do przetwarzania tekstu wprowadzonych przez użytkowników, bo kompleksowo żąda wszystkie możliwe formaty.
  * `formatMixedTextToLegacy`(message, resolver)` – przyjmuje tekst mieszany (MiniMessage + legacy + § + sekwencje \uXXXX) i zwraca poprawnie zdeserializowany komponent, opcjonalnie z resolverem placeholderów. Najczęściej używane do przetwarzania tekstu wprowadzonych przez użytkowników, bo kompleksowo żąda wszystkie możliwe formaty.
 ---
+
+## Component adapters (Paper and Spigot, R0.3)
+
+`formatRichTextToComponent(text, resolver)` parses configured fragments containing both MiniMessage and legacy formatting. `stringMessageToComponentNoPrefixLiteral(category, key, values)` renders dynamic text literally while applying formatting from the language template. `componentToString(component, format)` serializes built components with the handler's codecs; `getMessageFormat(category, key, includePrefix)` preserves the source template's format when adapting components. Existing message parsing APIs retain their behavior.

@@ -15,6 +15,8 @@ class MessageHandlerLanguageSafetyTest {
         prefix: "[Default]"
         messages:
           hello: "Hello from bundled"
+          literal: "<gray>Reason: <reason></gray>"
+          display: "<operator_display>"
           list:
             - "One"
             - "Two"
@@ -79,6 +81,37 @@ class MessageHandlerLanguageSafetyTest {
         } finally {
             dataFolder.deleteRecursively()
         }
+    }
+
+    @Test
+    fun `component serialization preserves text in all output formats`() {
+        val folder = Files.createTempDirectory("mh-codecs").toFile()
+        try {
+            val handler = createHandler(folder)
+            val component = handler.formatRichTextToComponent("&cRed <gold>gold</gold> &#123456hex")
+            for (format in MessageHandler.MessageFormat.entries) {
+                val rendered = handler.componentToString(component, format)
+                assertEquals("Red gold hex", handler.getPlainText(handler.formatTextToComponent(rendered, format)))
+            }
+            assertEquals(MessageHandler.MessageFormat.MINI_MESSAGE, handler.getMessageFormat("messages", "display"))
+            assertEquals(MessageHandler.MessageFormat.PLAIN, handler.getMessageFormat("messages", "hello"))
+        } finally { folder.deleteRecursively() }
+    }
+
+    @Test
+    fun `literal placeholders never create formatting or commands`() {
+        val folder = Files.createTempDirectory("mh-literals").toFile()
+        try {
+            val handler = createHandler(folder)
+            val value = "<red>&c <click:run_command:'/op User'>click</click>"
+            val component = handler.stringMessageToComponentNoPrefixLiteral("messages", "literal", mapOf("reason" to value))
+            assertEquals("Reason: $value", handler.getPlainText(component))
+            fun hasClick(node: net.kyori.adventure.text.Component): Boolean = node.clickEvent() != null || node.children().any(::hasClick)
+            assertTrue(!hasClick(component))
+            val rich = handler.formatRichTextToComponent("<gold>[Admin]</gold> &a<name>",
+                net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("name", "User <red>"))
+            assertEquals("[Admin] User <red>", handler.getPlainText(rich))
+        } finally { folder.deleteRecursively() }
     }
 
     private fun createHandler(dataFolder: File): MessageHandler = MessageHandler(
