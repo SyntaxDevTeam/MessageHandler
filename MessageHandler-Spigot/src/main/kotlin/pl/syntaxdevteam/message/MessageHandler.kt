@@ -3,7 +3,11 @@ package pl.syntaxdevteam.message
 import com.github.benmanes.caffeine.cache.Cache
 import com.github.benmanes.caffeine.cache.Caffeine
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.minimessage.Context
 import net.kyori.adventure.text.minimessage.MiniMessage
+import net.kyori.adventure.text.minimessage.tag.PreProcess
+import net.kyori.adventure.text.minimessage.tag.Tag
+import net.kyori.adventure.text.minimessage.tag.resolver.ArgumentQueue
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver
 import net.kyori.adventure.text.serializer.ansi.ANSIComponentSerializer
@@ -61,7 +65,10 @@ class MessageHandler(
         .expireAfterAccess(10, TimeUnit.MINUTES)
         .build()
 
-    private val mM = MiniMessage.miniMessage()
+    private val legacyCodePattern = Regex("[&§](?:x(?:[&§][0-9a-f]){6}|#[0-9a-f]{6}|[0-9a-fk-or])", RegexOption.IGNORE_CASE)
+    private val miniMessageTagPattern = Regex("""<(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^'">])*>""")
+    private val legacyColors = listOf("black", "dark_blue", "dark_green", "dark_aqua", "dark_red", "dark_purple", "gold", "gray", "dark_gray", "blue", "green", "aqua", "red", "light_purple", "yellow", "white")
+    private val mM = MiniMessage.builder().preProcessor(::normalizeRichText).build()
 
     @Volatile
     private var yamlConfig: FileConfiguration = YamlConfiguration()
@@ -529,7 +536,7 @@ class MessageHandler(
 
     /** Renders server-configured rich fragments containing legacy codes and MiniMessage tags. */
     fun formatRichTextToComponent(message: String, resolver: TagResolver = TagResolver.empty()): Component =
-        deserializeMiniMessage(normalizeRichText(message), resolver)
+        deserializeMiniMessage(message, resolver)
 
     /** Dynamic values are literal text; formatting remains confined to the language template. */
     fun stringMessageToComponentNoPrefixLiteral(category: String, key: String, placeholders: Map<String, String> = emptyMap()): Component {
@@ -540,49 +547,45 @@ class MessageHandler(
     }
 
     private fun normalizeRichText(message: String): String {
-        val colors = listOf("black", "dark_blue", "dark_green", "dark_aqua", "dark_red", "dark_purple", "gold", "gray", "dark_gray", "blue", "green", "aqua", "red", "light_purple", "yellow", "white")
-        val expanded = Regex("[&§]x((?:[&§][0-9a-f]){6})", RegexOption.IGNORE_CASE).replace(message) {
-            "<#" + it.groupValues[1].filter { c -> c != '&' && c != '§' } + ">"
-        }
-        val hex = Regex("[&§]#([0-9a-f]{6})", RegexOption.IGNORE_CASE).replace(expanded) { "<#${it.groupValues[1]}>" }
-        return Regex("[&§]([0-9a-fk-or])", RegexOption.IGNORE_CASE).replace(hex) {
-            val code = it.groupValues[1].lowercase()[0]
-            // A legacy color code resets decorations, unlike a MiniMessage color tag.
-            if (code in '0'..'9' || code in 'a'..'f') {
-                "<bold:false><italic:false><underlined:false><strikethrough:false><obfuscated:false><${colors[code.digitToInt(16)]}>"
-            } else when (code) {
+        val decoded = if (message.contains("\\u")) convertUnicodeEscapeSequences(message) else message
+        if ('&' !in decoded && '§' !in decoded) return decoded
+        // Legacy colors (including RGB) reset decorations; MiniMessage colors do not.
+        val clearDecorations = "<bold:false><italic:false><underlined:false><strikethrough:false><obfuscated:false>"
+        fun convert(text: String, convertAmpersand: Boolean): String = legacyCodePattern.replace(text) {
+            val legacy = it.value
+            if (!convertAmpersand && legacy[0] == '&') legacy
+            else when (val code = legacy[1].lowercaseChar()) {
+                '#' -> clearDecorations + "<" + legacy.substring(1) + ">"
+                'x' -> clearDecorations + "<#" + legacy.substring(2).filter { c -> c != '&' && c != '§' } + ">"
+                in '0'..'9', in 'a'..'f' -> clearDecorations + "<" + legacyColors[code.digitToInt(16)] + ">"
                 'k' -> "<obfuscated>"; 'l' -> "<bold>"; 'm' -> "<strikethrough>"
                 'n' -> "<underlined>"; 'o' -> "<italic>"; else -> "<reset>"
             }
         }
-    }
-
-    fun miniMessageFormat(message: String): Component = mM.deserialize(message)
-    fun getANSIText(component: Component): String = ANSIComponentSerializer.ansi().serialize(component)
-    fun getPlainText(component: Component): String = PlainTextComponentSerializer.plainText().serialize(component)
-
-    private fun convertWithLegacySerializer(message: String, serializer: LegacyComponentSerializer): String {
-        val pattern = Regex("(<[^>]+>|\\{[^}]+})")
-        val result = StringBuilder()
+        val result = StringBuilder(decoded.length)
         var lastIndex = 0
-        for (match in pattern.findAll(message)) {
-            val start = match.range.first
-            if (start > lastIndex) result.append(mM.serialize(serializer.deserialize(message.substring(lastIndex, start))))
-            result.append(match.value)
-            lastIndex = match.range.last + 1
+        for (tag in miniMessageTagPattern.findAll(decoded)) {
+            val start = tag.range.first
+            result.append(convert(decoded.substring(lastIndex, start), true))
+            var escapeStart = start
+            while (escapeStart > 0 && decoded[escapeStart - 1] == '\\') escapeStart--
+            val escaped = (start - escapeStart) % 2 != 0
+            // Ampersands in command/URL arguments are data. Hover text is normalized
+            // when MiniMessage recursively parses it through the same preprocessor.
+            // Section codes must be converted even in arguments: MiniMessage rejects them.
+            result.append(convert(tag.value, escaped))
+            lastIndex = tag.range.last + 1
         }
-        if (lastIndex < message.length) result.append(mM.serialize(serializer.deserialize(message.substring(lastIndex))))
+        result.append(convert(decoded.substring(lastIndex), true))
         return result.toString()
     }
 
-    private fun convertLegacyToMiniMessage(message: String): String =
-        convertWithLegacySerializer(message, legacySerializerWithHex('&'))
+    fun miniMessageFormat(message: String): Component = deserializeMiniMessage(message, null)
+    fun getANSIText(component: Component): String = ANSIComponentSerializer.ansi().serialize(component)
+    fun getPlainText(component: Component): String = PlainTextComponentSerializer.plainText().serialize(component)
 
     fun legacySerializer(message: String): String = LegacyComponentSerializer.legacySection().serialize(Component.text(message))
     fun legacyComponentSerializer(message: Component): String = LegacyComponentSerializer.legacySection().serialize(message)
-
-    private fun convertSectionSignToMiniMessage(message: String): String =
-        convertWithLegacySerializer(message, legacySerializerWithHex('§'))
 
     private fun legacySerializerWithHex(character: Char): LegacyComponentSerializer =
         LegacyComponentSerializer.builder().character(character).hexColors().build()
@@ -605,21 +608,30 @@ class MessageHandler(
         val normalized = if (message.contains("\\u")) convertUnicodeEscapeSequences(message) else message
         val format = formatHint ?: detectMessageFormat(normalized)
         val component = when (format) {
-            MessageFormat.MINI_MESSAGE -> deserializeMiniMessage(normalized, resolver)
-            MessageFormat.LEGACY_SECTION -> deserializeMiniMessage(convertSectionSignToMiniMessage(normalized), resolver)
-            MessageFormat.LEGACY_AMPERSAND -> deserializeMiniMessage(convertLegacyToMiniMessage(normalized), resolver)
+            MessageFormat.MINI_MESSAGE, MessageFormat.LEGACY_SECTION, MessageFormat.LEGACY_AMPERSAND ->
+                deserializeMiniMessage(message, resolver)
             MessageFormat.PLAIN -> Component.text(normalized)
         }
         return ParsedMessage(component, format)
     }
 
-    private fun deserializeMiniMessage(message: String, resolver: TagResolver?): Component =
-        if (resolver != null) mM.deserialize(message, resolver) else mM.deserialize(message)
+    private fun deserializeMiniMessage(message: String, resolver: TagResolver?): Component {
+        if (resolver == null) return mM.deserialize(message)
+        // Parsed placeholders expand after template normalization, including nested ones.
+        // Inserting tags (unparsed text/components) must remain untouched.
+        val compatibleResolver = object : TagResolver by resolver {
+            override fun resolve(name: String, arguments: ArgumentQueue, ctx: Context): Tag? {
+                val tag = resolver.resolve(name, arguments, ctx)
+                return if (tag is PreProcess) Tag.preProcessParsed(normalizeRichText(tag.value())) else tag
+            }
+        }
+        return mM.deserialize(message, compatibleResolver)
+    }
 
     private fun detectMessageFormat(message: String): MessageFormat = when {
         "<[^>]+>".toRegex().containsMatchIn(message) -> MessageFormat.MINI_MESSAGE
-        "§[0-9a-fk-orA-FK-OR]".toRegex().containsMatchIn(message) -> MessageFormat.LEGACY_SECTION
-        "&[0-9a-fk-orA-FK-OR]".toRegex().containsMatchIn(message) -> MessageFormat.LEGACY_AMPERSAND
+        "§(?:[0-9a-fk-or]|#[0-9a-f]{6})".toRegex(RegexOption.IGNORE_CASE).containsMatchIn(message) -> MessageFormat.LEGACY_SECTION
+        "&(?:[0-9a-fk-or]|#[0-9a-f]{6})".toRegex(RegexOption.IGNORE_CASE).containsMatchIn(message) -> MessageFormat.LEGACY_AMPERSAND
         else -> MessageFormat.PLAIN
     }
 

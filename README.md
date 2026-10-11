@@ -140,13 +140,30 @@ itp. nowe przeciążenia zachowują dotychczasowy, globalny wybór języka.
 ### Metody do formatowania tekstu
  * `formatLegacyText(message)` – konwertuje tekst w formacie &-color na komponent MiniMessage. Czyli formatowanie wszystkich formatów Minecraft typu `&a`, `&l`, `&n` itp.
  * `formatHexAndLegacyText(message)` – obsługuje zarówno kody `&#rrggbb`, jak i `§` podczas konwersji do komponentu.
- * `miniMessageFormat(message)` – parsuje surowy ciąg MiniMessage do komponentu Adventure.
+ * `miniMessageFormat(message)` – parsuje MiniMessage do komponentu Adventure, konwertując także domieszane kody legacy.
  * `getANSIText(component)` – serializuje komponent do kolorowego ANSI (np. na konsolę).
  * `getPlainText(component)` – sprowadza komponent do czystego tekstu pozbawionego  formatowania.
  * `formatMixedTextToMiniMessage(message, resolver)` – przyjmuje tekst mieszany (MiniMessage + legacy + § + sekwencje \uXXXX) i zwraca poprawnie zdeserializowany komponent, opcjonalnie z resolverem placeholderów. Najczęściej używane do przetwarzania tekstu wprowadzonych przez użytkowników, bo kompleksowo żąda wszystkie możliwe formaty.
  * `formatMixedTextToLegacy`(message, resolver)` – przyjmuje tekst mieszany (MiniMessage + legacy + § + sekwencje \uXXXX) i zwraca poprawnie zdeserializowany komponent, opcjonalnie z resolverem placeholderów. Najczęściej używane do przetwarzania tekstu wprowadzonych przez użytkowników, bo kompleksowo żąda wszystkie możliwe formaty.
 ---
 
+## Mieszanie legacy i MiniMessage
+
+Metody parsujące wiadomości obsługują jednocześnie tagi MiniMessage, kody `&c` i `§c`,
+kolory HEX (`&#rrggbb`, `§#rrggbb`, `&x&r&r&g&g&b&b`, `§x§r§r§g§g§b§b`) oraz sekwencje `\uXXXX`.
+Dotyczy to także wartości placeholderów przekazywanych w mapie i przez `Placeholder.parsed`,
+w tym placeholderów zagnieżdżonych. Nie trzeba wcześniej usuwać kolorów z komunikatów innych pluginów.
+
+Na przykład szablon `&cPowód &8» &7<reason>` z wartością `reason = "§c[Vulcan] Unfair Advantage"`
+wyświetli `Powód » [Vulcan] Unfair Advantage`, zachowując czerwony kolor powodu.
+Kody legacy są zamieniane na tagi przed parsowaniem, również po rozwinięciu placeholderów,
+więc ich obecność nie powoduje wyjątku MiniMessage. Legacy kolory resetują dekoracje,
+a `&r` i `§r` resetują formatowanie. Ampersandy w argumentach komend i URL pozostają bez zmian.
+
+`MessageFormat.PLAIN`, `Placeholder.unparsed` i `Placeholder.component` zachowują tekst literalny.
+Na Paper i Spigot do literalnych wartości dynamicznych służy również
+`stringMessageToComponentNoPrefixLiteral`.
+
 ## Component adapters (Paper and Spigot, R0.3)
 
-`formatRichTextToComponent(text, resolver)` parses configured fragments containing both MiniMessage and legacy formatting. `stringMessageToComponentNoPrefixLiteral(category, key, values)` renders dynamic text literally while applying formatting from the language template. `componentToString(component, format)` serializes built components with the handler's codecs; `getMessageFormat(category, key, includePrefix)` preserves the source template's format when adapting components. Existing message parsing APIs retain their behavior.
+`formatRichTextToComponent(text, resolver)` parses configured fragments containing both MiniMessage and legacy formatting. `stringMessageToComponentNoPrefixLiteral(category, key, values)` renders dynamic text literally while applying formatting from the language template. `componentToString(component, format)` serializes built components with the handler's codecs; `getMessageFormat(category, key, includePrefix)` preserves the source template's format when adapting components. All rich message parsing APIs normalize mixed legacy and MiniMessage formatting.
